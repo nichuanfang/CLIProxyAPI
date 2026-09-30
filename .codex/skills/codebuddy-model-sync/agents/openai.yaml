@@ -1,0 +1,6 @@
+interface:
+  display_name: "Codebuddy Model Sync"
+  short_description: "Sync CodeBuddy models into CLIProxyAPI"
+
+policy:
+  allow_implicit_invocation: false
