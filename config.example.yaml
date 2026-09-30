@@ -704,7 +704,7 @@ oauth:
 
   # Global OAuth model name aliases (per channel)
   # These aliases rename model IDs for both model listing and request routing.
-  # Supported channels: vertex, aistudio, antigravity, claude, codex, kimi, xai, meta.
+  # Supported channels: vertex, aistudio, antigravity, claude, codex, kimi, xai, meta, codebuddy.
   # NOTE: These aliases do not apply to any of the upstream groups under api-keys.
   # NOTE: Because aliases affect the merged /v1 model list and merged request routing, overlapping
   # client-visible names can become ambiguous across providers. For strict backend pinning, use
@@ -754,13 +754,16 @@ oauth:
   #   meta:
   #     - name: "muse-spark-1.3"
   #       alias: "muse-latest"
+  #   codebuddy:
+  #     - name: "glm5.3"
+  #       alias: "glm"
   #   sample-provider:                  # plugin provider keys are supported for OAuth plugins
   #     - name: "sample-model-latest"
   #       alias: "sample-latest"
 
   # OAuth provider model settings (per channel)
   # Allows overriding model-level capabilities (such as context window) for OAuth credentials.
-  # Supported channels: vertex, aistudio, antigravity, claude, codex, kimi, xai, meta.
+  # Supported channels: vertex, aistudio, antigravity, claude, codex, kimi, xai, meta, codebuddy.
   # settings:
   #   codex:
   #     - name: "gpt-6-sol"
@@ -786,6 +789,8 @@ oauth:
   #     - "grok-3-mini"
   #   meta:
   #     - "muse-spark-1.1"
+  #   codebuddy:
+  #     - "glm5.3"
 
   # OAuth provider request-scoped error rules (custom error classification for OAuth credentials)
   # request-scoped-errors:

@@ -126,6 +126,13 @@ func tryRefreshModels(ctx context.Context, label string) {
 		parsed.Meta = oldData.Meta
 	}
 
+	// Preserve embedded/local CodeBuddy definitions until the remote catalog
+	// publishes its own section. This keeps local-only providers available even
+	// when the shared models catalog omits them.
+	if len(parsed.CodeBuddy) == 0 && oldData != nil && len(oldData.CodeBuddy) > 0 {
+		parsed.CodeBuddy = oldData.CodeBuddy
+	}
+
 	// Detect changes before updating store.
 	changed := detectChangedProviders(oldData, parsed)
 
@@ -226,6 +233,7 @@ func detectChangedProviders(oldData, newData *staticModelsJSON) []string {
 		{"xai", oldData.XAI, newData.XAI},
 		{"devin", oldData.Devin, newData.Devin},
 		{"meta", oldData.Meta, newData.Meta},
+		{"codebuddy", oldData.CodeBuddy, newData.CodeBuddy},
 	}
 
 	seen := make(map[string]bool, len(sections))
@@ -355,6 +363,7 @@ func validateModelsCatalog(data *staticModelsJSON) error {
 		{name: "antigravity", models: data.Antigravity},
 		{name: "xai", models: data.XAI},
 		{name: "meta", models: data.Meta},
+		{name: "codebuddy", models: data.CodeBuddy},
 	}
 
 	for _, section := range requiredSections {

@@ -345,3 +345,23 @@ func TestGetDevinModelsFallback(t *testing.T) {
 		t.Errorf("info.DisplayName = %q, want SWE-2", info.DisplayName)
 	}
 }
+
+func TestCodeBuddyModels(t *testing.T) {
+	want := []string{"deepseek-v4.1-flash", "glm-5.3-flashx", "glm5.3", "kimi-k3-2"}
+	models := GetCodeBuddyModels()
+	if len(models) != len(want) {
+		t.Fatalf("model count = %d, want %d", len(models), len(want))
+	}
+	for i, model := range models {
+		if model == nil || model.ID != want[i] {
+			t.Fatalf("models[%d] = %#v, want %s", i, model, want[i])
+		}
+	}
+	channel := GetStaticModelDefinitionsByChannel("codebuddy")
+	if len(channel) != len(want) {
+		t.Fatalf("channel count = %d, want %d", len(channel), len(want))
+	}
+	if LookupStaticModelInfo("glm5.3") == nil {
+		t.Fatal("LookupStaticModelInfo(glm5.3) = nil")
+	}
+}

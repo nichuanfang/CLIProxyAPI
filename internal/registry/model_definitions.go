@@ -35,6 +35,7 @@ type staticModelsJSON struct {
 	XAI         []*ModelInfo `json:"xai"`
 	Devin       []*ModelInfo `json:"devin"`
 	Meta        []*ModelInfo `json:"meta"`
+	CodeBuddy   []*ModelInfo `json:"codebuddy"`
 }
 
 // GetClaudeModels returns the standard Claude model definitions.
@@ -80,6 +81,11 @@ func GetCodexProModels() []*ModelInfo {
 // GetKimiModels returns the standard Kimi (Moonshot AI) model definitions.
 func GetKimiModels() []*ModelInfo {
 	return cloneModelInfos(getModels().Kimi)
+}
+
+// GetCodeBuddyModels returns the fixed CodeBuddy model definitions.
+func GetCodeBuddyModels() []*ModelInfo {
+	return cloneModelInfos(getModels().CodeBuddy)
 }
 
 // GetAntigravityModels returns the standard Antigravity model definitions.
@@ -479,7 +485,7 @@ func cloneModelInfos(models []*ModelInfo) []*ModelInfo {
 //   - antigravity
 //   - xai
 //   - devin
-//   - meta
+//   - codebuddy
 func GetStaticModelDefinitionsByChannel(channel string) []*ModelInfo {
 	key := strings.ToLower(strings.TrimSpace(channel))
 	switch key {
@@ -505,6 +511,8 @@ func GetStaticModelDefinitionsByChannel(channel string) []*ModelInfo {
 		return GetDevinModels()
 	case "meta", "muse":
 		return GetMetaModels()
+	case "codebuddy":
+		return GetCodeBuddyModels()
 	default:
 		return nil
 	}
@@ -550,6 +558,7 @@ func LookupStaticModelInfo(modelID string) *ModelInfo {
 		data.Devin,
 		staticDevinModels,
 		data.Meta,
+		data.CodeBuddy,
 	}
 	for _, models := range allModels {
 		for _, m := range models {

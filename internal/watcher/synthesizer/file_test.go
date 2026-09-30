@@ -1108,3 +1108,26 @@ func TestSynthesizeAuthFile_CodexPlanType(t *testing.T) {
 		})
 	}
 }
+
+func TestSynthesizeCodeBuddyBaseURL(t *testing.T) {
+	tempDir := t.TempDir()
+	data := []byte(`{"type":"codebuddy","access_token":"token","refresh_token":"refresh","base_url":"https://codebuddy.example","expired":"2026-12-31T00:00:00Z"}`)
+	if errWriteFile := os.WriteFile(filepath.Join(tempDir, "codebuddy-auth.json"), data, 0644); errWriteFile != nil {
+		t.Fatalf("failed to write auth file: %v", errWriteFile)
+	}
+	auths, err := NewFileSynthesizer().Synthesize(&SynthesisContext{
+		Config:      &config.Config{},
+		AuthDir:     tempDir,
+		Now:         time.Now(),
+		IDGenerator: NewStableIDGenerator(),
+	})
+	if err != nil {
+		t.Fatalf("Synthesize() error = %v", err)
+	}
+	if len(auths) != 1 {
+		t.Fatalf("expected 1 auth, got %d", len(auths))
+	}
+	if got := auths[0].Attributes["base_url"]; got != "https://codebuddy.example" {
+		t.Fatalf("base_url = %q, want https://codebuddy.example", got)
+	}
+}

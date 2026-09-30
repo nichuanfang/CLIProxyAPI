@@ -9,6 +9,7 @@ import (
 	"runtime"
 	"strings"
 
+	codebuddyauth "github.com/router-for-me/CLIProxyAPI/v8/internal/auth/codebuddy"
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/auth/codex"
 	kimiauth "github.com/router-for-me/CLIProxyAPI/v8/internal/auth/kimi"
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/config"
@@ -247,6 +248,18 @@ func synthesizeFileAuths(ctx *SynthesisContext, fullPath string, data []byte) ([
 			a.Attributes["base_url"] = kimiauth.ResolveKimiAPIBaseURL(resolvedDomain)
 		}
 	}
+	// For CodeBuddy auth files, preserve the configurable upstream base URL.
+	if provider == "codebuddy" {
+		baseURL := ""
+		if rawBaseURL, ok := metadata["base_url"].(string); ok {
+			baseURL = strings.TrimSpace(rawBaseURL)
+		}
+		if baseURL == "" {
+			baseURL = codebuddyauth.DefaultBaseURL
+		}
+		a.Attributes["base_url"] = baseURL
+	}
+
 	// For codex auth files, extract plan_type from metadata or JWT id_token.
 	if provider == "codex" {
 		if ptRaw, ok := metadata["plan_type"].(string); ok && strings.TrimSpace(ptRaw) != "" {
