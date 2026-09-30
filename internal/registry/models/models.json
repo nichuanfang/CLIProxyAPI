@@ -4689,11 +4689,12 @@
       "type": "codebuddy",
       "display_name": "DeepSeek V4.1 Flash",
       "name": "deepseek-v4.1-flash",
-      "description": "DeepSeek V4.1 Flash reasoning and agentic coding model",
-      "context_length": 131072,
-      "max_completion_tokens": 16384,
+      "description": "DeepSeek V4.1 Flash multimodal reasoning and agentic coding model",
+      "context_length": 1000000,
+      "max_completion_tokens": 128000,
       "supportedInputModalities": [
-        "text"
+        "text",
+        "image"
       ],
       "supportedOutputModalities": [
         "text"
@@ -4707,11 +4708,12 @@
       "type": "codebuddy",
       "display_name": "GLM 5.3 FlashX",
       "name": "glm-5.3-flashx",
-      "description": "GLM 5.3 FlashX fast reasoning model",
-      "context_length": 131072,
-      "max_completion_tokens": 16384,
+      "description": "GLM 5.3 FlashX fast multimodal reasoning model",
+      "context_length": 1000000,
+      "max_completion_tokens": 131072,
       "supportedInputModalities": [
-        "text"
+        "text",
+        "image"
       ],
       "supportedOutputModalities": [
         "text"
@@ -4726,10 +4728,11 @@
       "display_name": "GLM 5.3",
       "name": "glm5.3",
       "description": "GLM 5.3 reasoning and agentic coding model",
-      "context_length": 131072,
-      "max_completion_tokens": 16384,
+      "context_length": 1000000,
+      "max_completion_tokens": 64000,
       "supportedInputModalities": [
-        "text"
+        "text",
+        "image"
       ],
       "supportedOutputModalities": [
         "text"
@@ -4741,13 +4744,14 @@
       "created": 1780000000,
       "owned_by": "codebuddy",
       "type": "codebuddy",
-      "display_name": "Kimi K3.2",
+      "display_name": "Kimi K3",
       "name": "kimi-k3-2",
-      "description": "Kimi K3.2 reasoning and agentic coding model",
-      "context_length": 131072,
-      "max_completion_tokens": 16384,
+      "description": "Kimi K3 reasoning and agentic coding model",
+      "context_length": 1000000,
+      "max_completion_tokens": 32000,
       "supportedInputModalities": [
-        "text"
+        "text",
+        "image"
       ],
       "supportedOutputModalities": [
         "text"
