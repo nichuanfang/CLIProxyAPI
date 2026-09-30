@@ -1,0 +1,96 @@
+name: Publish Docker image to GHCR
+
+on:
+  push:
+    branches:
+      - main
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Custom tag for the image (optional, default: latest)'
+        required: false
+        default: 'latest'
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata (tags, labels) for Docker
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          flavor: |
+            latest=auto
+          tags: |
+            type=ref,event=branch
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=sha,format=short
+            type=raw,value=${{ github.event.inputs.tag }},enable=${{ github.event.name == 'workflow_dispatch' && github.event.inputs.tag != '' }}
+          labels: |
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.description=CLIProxyAPI with CodeBuddy support (amd64)
+
+      - name: Generate Build Metadata
+        id: build_args
+        run: |
+          echo "version=${GITHUB_REF_NAME}" >> $GITHUB_OUTPUT
+          echo "commit=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
+          echo "build_date=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> $GITHUB_OUTPUT
+
+      - name: Build and push Docker image (amd64 only)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            VERSION=${{ steps.build_args.outputs.version }}
+            COMMIT=${{ steps.build_args.outputs.commit }}
+            BUILD_DATE=${{ steps.build_args.outputs.build_date }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Report Package URL & Public Visibility
+        if: always()
+        run: |
+          repo_lower=$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')
+          pkg_name="${repo_lower##*/}"
+          owner_lower="${repo_lower%/*}"
+          echo "### 🚀 Image Published to GHCR" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- **Image URL:** \`ghcr.io/${repo_lower}:latest\`" >> $GITHUB_STEP_SUMMARY
+          echo "- **Architecture:** \`linux/amd64\`" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "#### 🌐 Public Visibility Guide" >> $GITHUB_STEP_SUMMARY
+          echo "If this is your first time publishing, GitHub creates packages as Private by default on personal accounts." >> $GITHUB_STEP_SUMMARY
+          echo "To make it **Public** (allowing \`docker pull\` without login):" >> $GITHUB_STEP_SUMMARY
+          echo "1. Visit [Package Settings](https://github.com/users/${owner_lower}/packages/container/package/${pkg_name}/settings)" >> $GITHUB_STEP_SUMMARY
+          echo "2. Scroll down to **Danger Zone** -> **Change package visibility**" >> $GITHUB_STEP_SUMMARY
+          echo "3. Select **Public** and confirm. *(You only need to do this once; subsequent pushes stay Public permanently)*" >> $GITHUB_STEP_SUMMARY
