@@ -1,0 +1,7 @@
+interface:
+  display_name: "Sync Upstream"
+  short_description: "Sync updates from upstream CLIProxyAPI main"
+  default_prompt: "Use $sync-upstream to fetch, merge, and verify updates from upstream CLIProxyAPI main."
+
+policy:
+  allow_implicit_invocation: false
