@@ -4687,9 +4687,9 @@
       "created": 1780000000,
       "owned_by": "codebuddy",
       "type": "codebuddy",
-      "display_name": "DeepSeek V4.1 Flash",
+      "display_name": "Deepseek-V4.1-Flash",
       "name": "deepseek-v4.1-flash",
-      "description": "DeepSeek V4.1 Flash multimodal reasoning and agentic coding model",
+      "description": "DeepSeek flagship model, supporting 1M context window, native multimodal model",
       "context_length": 1000000,
       "max_completion_tokens": 128000,
       "supportedInputModalities": [
@@ -4706,30 +4706,11 @@
       "created": 1780000000,
       "owned_by": "codebuddy",
       "type": "codebuddy",
-      "display_name": "GLM 5.3 FlashX",
+      "display_name": "GLM-5.3-FlashX",
       "name": "glm-5.3-flashx",
-      "description": "GLM 5.3 FlashX fast multimodal reasoning model",
+      "description": "Native multimodal model, excelling at visual understanding and professional tasks.",
       "context_length": 1000000,
       "max_completion_tokens": 131072,
-      "supportedInputModalities": [
-        "text",
-        "image"
-      ],
-      "supportedOutputModalities": [
-        "text"
-      ]
-    },
-    {
-      "id": "glm5.3",
-      "object": "model",
-      "created": 1780000000,
-      "owned_by": "codebuddy",
-      "type": "codebuddy",
-      "display_name": "GLM 5.3",
-      "name": "glm5.3",
-      "description": "GLM 5.3 reasoning and agentic coding model",
-      "context_length": 1000000,
-      "max_completion_tokens": 64000,
       "supportedInputModalities": [
         "text",
         "image"
@@ -4744,11 +4725,30 @@
       "created": 1780000000,
       "owned_by": "codebuddy",
       "type": "codebuddy",
-      "display_name": "Kimi K3",
+      "display_name": "Kimi-K3",
       "name": "kimi-k3-2",
-      "description": "Kimi K3 reasoning and agentic coding model",
+      "description": "Excels at complex, long-horizon autonomous tasks, with standout front-end skills and strong knowledge work and scientific reasoning",
       "context_length": 1000000,
       "max_completion_tokens": 32000,
+      "supportedInputModalities": [
+        "text",
+        "image"
+      ],
+      "supportedOutputModalities": [
+        "text"
+      ]
+    },
+    {
+      "id": "glm-5.3",
+      "object": "model",
+      "created": 1780000000,
+      "owned_by": "codebuddy",
+      "type": "codebuddy",
+      "display_name": "GLM-5.3",
+      "name": "glm-5.3",
+      "description": "Flagship model, excelling at complex software engineering and long-horizon agent tasks",
+      "context_length": 1000000,
+      "max_completion_tokens": 64000,
       "supportedInputModalities": [
         "text",
         "image"
