@@ -13,7 +13,7 @@ func TestTokenStorageSave(t *testing.T) {
 	storage := &TokenStorage{
 		AccessToken:  "access",
 		RefreshToken: "refresh",
-		Expired:      FormatExpires(time.Date(2026, 9, 30, 11, 0, 0, 0, time.UTC)),
+		Expired:      FormatExpires(time.Now().Add(24 * time.Hour)),
 		BaseURL:      "https://upstream.test",
 		Type:         "codebuddy",
 	}
