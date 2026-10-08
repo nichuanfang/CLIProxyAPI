@@ -369,7 +369,7 @@ func TestGetDevinModelsFallback(t *testing.T) {
 }
 
 func TestCodeBuddyModels(t *testing.T) {
-	want := []string{"deepseek-v4.1-flash", "glm-5.3-flashx", "glm5.3", "kimi-k3-2"}
+	want := []string{"deepseek-v4.1-flash", "glm-5.3-flashx", "kimi-k3-2", "glm-5.3"}
 	models := GetCodeBuddyModels()
 	if len(models) != len(want) {
 		t.Fatalf("model count = %d, want %d", len(models), len(want))
@@ -383,7 +383,7 @@ func TestCodeBuddyModels(t *testing.T) {
 	if len(channel) != len(want) {
 		t.Fatalf("channel count = %d, want %d", len(channel), len(want))
 	}
-	if LookupStaticModelInfo("glm5.3") == nil {
-		t.Fatal("LookupStaticModelInfo(glm5.3) = nil")
+	if LookupStaticModelInfo("glm-5.3") == nil {
+		t.Fatal("LookupStaticModelInfo(glm-5.3) = nil")
 	}
 }
