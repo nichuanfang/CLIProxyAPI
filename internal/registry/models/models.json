@@ -4909,6 +4909,24 @@
       "supportedOutputModalities": [
         "text"
       ]
+    },
+    {
+      "id": "space-bunny",
+      "object": "model",
+      "created": 1780000000,
+      "owned_by": "codebuddy",
+      "type": "codebuddy",
+      "display_name": "Space-Bunny",
+      "name": "space-bunny",
+      "description": "CodeBuddy account model (no product metadata available).",
+      "context_length": 1000000,
+      "max_completion_tokens": 64000,
+      "supportedInputModalities": [
+        "text"
+      ],
+      "supportedOutputModalities": [
+        "text"
+      ]
     }
   ]
 }

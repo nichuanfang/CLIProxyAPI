@@ -16,8 +16,13 @@ Prints JSON:
   "package_root": "...",
   "product": {"commit": "...", "date": "...", "endpoint": "..."},
   "models": [...],
-  "agent_models": {"cli": [...]}
+  "agent_models": {"cli": [...]},
+  "account_supported_models": [...]
 }
+
+"account_supported_models" is the authoritative list the CLI returns for the
+signed-in account (captured from the "--model <invalid>" error). Prefer it over
+"agent_models.cli" when deciding which IDs the CLI actually accepts.
 """
 
 from __future__ import annotations
@@ -25,6 +30,7 @@ from __future__ import annotations
 import json
 import os
 import pathlib
+import re
 import subprocess
 import sys
 
@@ -90,6 +96,43 @@ def cli_version(root: pathlib.Path) -> str:
         return package_version(root)
 
 
+def account_supported_models(root: pathlib.Path) -> list[str]:
+    """Return the CLI's authoritative model list for the signed-in account.
+
+    The CLI prints this list when asked for an unknown model, which is more
+    accurate than product metadata because it reflects the account's real
+    entitlements. Returns [] if the probe cannot be parsed.
+    """
+    binpath = root / "bin" / "codebuddy"
+    if not binpath.exists():
+        return []
+    try:
+        result = subprocess.run(
+            [
+                "node",
+                str(binpath),
+                "--model",
+                "__codebuddy_model_sync_probe__",
+                "-p",
+                "Say OK only.",
+                "--output-format",
+                "text",
+                "--dangerously-skip-permissions",
+            ],
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=120,
+        )
+    except Exception:
+        return []
+    text = "\n".join(part for part in (result.stdout, result.stderr) if part)
+    match = re.search(r"Currently supported models for your account:\s*((?:\s*-\s*\S+)+)", text)
+    if not match:
+        return []
+    return re.findall(r"-\s*(\S+)", match.group(1))
+
+
 def normalize_model(raw: dict) -> dict:
     reasoning = raw.get("reasoning") if isinstance(raw.get("reasoning"), dict) else None
     images = raw.get("supportsImages")
@@ -139,6 +182,7 @@ def main() -> int:
                 },
                 "models": models,
                 "agent_models": agent_models,
+                "account_supported_models": account_supported_models(root),
             }
             print(json.dumps(result, ensure_ascii=False, indent=2))
             return 0

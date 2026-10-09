@@ -369,7 +369,7 @@ func TestGetDevinModelsFallback(t *testing.T) {
 }
 
 func TestCodeBuddyModels(t *testing.T) {
-	want := []string{"deepseek-v4.1-flash", "glm-5.3-flashx", "kimi-k3-2", "glm-5.3"}
+	want := []string{"deepseek-v4.1-flash", "glm-5.3-flashx", "kimi-k3-2", "glm-5.3", "space-bunny"}
 	models := GetCodeBuddyModels()
 	if len(models) != len(want) {
 		t.Fatalf("model count = %d, want %d", len(models), len(want))

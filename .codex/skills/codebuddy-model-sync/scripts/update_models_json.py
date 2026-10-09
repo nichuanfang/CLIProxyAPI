@@ -145,12 +145,12 @@ def main() -> int:
     index = discovered_index(discover)
     agent_ids = discover.get("agent_models", {}).get("cli")
 
+    baseline_ids = list(old_ids)
+
     if args.ids:
         selected = parse_ids(args.ids)
-    elif args.metadata_only or (not args.add and not args.remove):
-        selected = old_ids
     else:
-        selected = old_ids
+        selected = list(old_ids)
 
     if args.add:
         for model_id in parse_ids(args.add):
@@ -183,16 +183,21 @@ def main() -> int:
             unchanged.append(model_id)
         entries.append(entry)
 
-    availability_hint = None
-    if agent_ids is not None:
-        availability_hint = {
-            "account_cli_models": agent_ids,
-            "selected_not_in_account_cli": [model_id for model_id in selected if model_id not in agent_ids],
-        }
+    authoritative_ids = discover.get("account_supported_models") or []
+    availability_hint = {
+        # Authoritative account-supported list from the CLI (preferred).
+        "account_supported_models": authoritative_ids,
+        # Product metadata pool; broader than what --model actually accepts.
+        "agent_cli_models": agent_ids,
+        # Selected IDs the account cannot use: probe failures, fallback missing metadata.
+        "selected_not_in_account": [
+            model_id for model_id in selected if authoritative_ids and model_id not in authoritative_ids
+        ],
+    }
 
     summary = {
         "models_json": str(models_path),
-        "old_ids": old_ids,
+        "old_ids": baseline_ids,
         "new_ids": selected,
         "changed": changed,
         "unchanged": unchanged,

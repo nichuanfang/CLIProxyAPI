@@ -9,6 +9,32 @@ metadata:
 
 Update the `codebuddy` array in `D:\workspace\CLIProxyAPI\internal\registry\models\models.json` from the installed CodeBuddy CLI metadata and live availability.
 
+## Source of truth (read this first)
+
+There are three different model lists and they must not be confused:
+
+1. **Authoritative account list** — what `--model` actually accepts for the
+   signed-in account. Capture it by asking for an invalid model; the CLI replies
+   with `Currently supported models for your account:` followed by the list.
+   This is the only list that should drive add/remove decisions.
+2. **`product.internal.json` metadata** — per-model fields (context length, max
+   output, image support, descriptions). Used to fill metadata, not to decide
+   support. `models` there is the broadest catalog.
+3. **`agents.cli` pool in `product.internal.json`** — a routing pool, NOT the
+   supported `--model` list. It contains IDs the CLI may not accept (for example
+   `glm-5.2`, `kimi-k2.8-preview`, `minimax-m3-pay`). Do not present it as the
+   CLI's supported models.
+
+`discover_codebuddy_models.py` returns all three: `models` (metadata catalog),
+`agent_models.cli` (routing pool), and `account_supported_models` (authoritative
+account list). Always prefer `account_supported_models` when reporting which
+models the CLI supports.
+
+IDs can appear in `account_supported_models` without a `product.internal.json`
+entry (for example `hy4-preview-f`, `space-bunny`, `step-5-preview`). For those,
+probe live availability and either add them with fields confirmed by the probe
+or report the metadata as unavailable.
+
 ## Inputs
 
 - Required: target file is fixed to `D:\workspace\CLIProxyAPI\internal\registry\models\models.json`.
@@ -61,15 +87,18 @@ Update the `codebuddy` array in `D:\workspace\CLIProxyAPI\internal\registry\mode
 
 3. Check account availability:
 
-   Run one non-mutating CLI invocation per candidate ID:
+   First read `account_supported_models` from the discovery output; that is the
+   authoritative list and no network probe is needed to determine membership.
+
+   Then, for each candidate ID, run one non-mutating CLI invocation:
 
    ```powershell
    node <codebuddy> --model <id> -p "Say OK only." --output-format text --dangerously-skip-permissions
    ```
 
-   Record `OK` as available. Record an error containing `service info not found` as unavailable. Do not delete unavailable IDs unless requested; report them as compatibility IDs.
+   Record `OK` as available. Record an error containing `service info not found` as unavailable, and capture the `Currently supported models for your account:` list printed alongside it. Do not delete unavailable IDs unless requested; report them as compatibility IDs.
 
-   The CLI account list is authoritative for availability. A model can be executable upstream but absent from the account list.
+   Treat `agents.cli` as a routing pool only. A model can be executable upstream but absent from the account list, and an `agents.cli` entry is not proof of `--model` support.
 
 4. Update JSON safely:
 
@@ -113,6 +142,7 @@ Update the `codebuddy` array in `D:\workspace\CLIProxyAPI\internal\registry\mode
 Report:
 
 - resolved CLI version and product commit/date
+- the authoritative account-supported model list captured from the CLI
 - added / updated / removed / preserved IDs
 - unavailable IDs found during probing
 - test/build/restart result
