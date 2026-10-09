@@ -1,11 +1,13 @@
 #Requires -Version 5.1
-# restart-pm2.ps1 stops the CLIProxyAPI service, rebuilds the Windows binary, and restarts it under PM2.
+# restart-pm2.ps1 stops the CLIProxyAPI service, rebuilds the native binary, and restarts it under PM2.
 [CmdletBinding()]
 param(
     [string]$AppName = "cli-proxy-api",
     [string]$EcosystemFile = (Join-Path $PSScriptRoot "ecosystem.config.cjs"),
     [string]$OutputPath = (Join-Path $PSScriptRoot "cli-proxy-api.exe"),
     [string]$ConfigPath = (Join-Path $PSScriptRoot "config.yaml"),
+    [string]$GoOS = "",
+    [string]$GoArch = "",
     [int]$HealthTimeoutSeconds = 30
 )
 
@@ -14,21 +16,40 @@ $projectRoot = $PSScriptRoot
 $outputName = [System.IO.Path]::GetFileName($OutputPath)
 $tempPath = "$OutputPath.tmp"
 
-function Join-PathRoot([string]$Path) {
-    return [System.IO.Path]::GetFullPath((Join-Path $projectRoot $Path))
-}
-
 function Get-ServicePort([string]$ConfigFile) {
     $port = 8317
-    if (Test-Path -LiteralPath $ConfigFile) {
-        foreach ($line in Get-Content -LiteralPath $ConfigFile) {
-            if ($line -match '^\s*port:\s*([0-9]+)\s*(?:#.*)?$') {
-                $port = [int]$Matches[1]
-                break
-            }
+    if (-not (Test-Path -LiteralPath $ConfigFile)) {
+        return $port
+    }
+
+    $inServerBlock = $false
+    foreach ($line in Get-Content -LiteralPath $ConfigFile) {
+        # A new top-level key ends the "server:" block.
+        if ($line -match '^[^\s#][^:]*:') {
+            $inServerBlock = ($line -match '^server\s*:')
+            continue
+        }
+
+        if ($inServerBlock -and $line -match '^\s+port\s*:\s*"?([0-9]+)"?\s*(?:#.*)?$') {
+            return [int]$Matches[1]
         }
     }
     return $port
+}
+
+function Get-EcosystemBinaryName([string]$EcosystemPath) {
+    # The ecosystem file derives the binary name from the PM2 host platform.
+    $isWindowsHost = $true
+    if (Get-Variable -Name IsWindows -Scope Global -ErrorAction SilentlyContinue) {
+        $isWindowsHost = [bool]$IsWindows
+    } elseif ([System.Environment]::OSVersion.Platform -eq [System.PlatformID]::Unix) {
+        $isWindowsHost = $false
+    }
+
+    if ($isWindowsHost) {
+        return "cli-proxy-api.exe"
+    }
+    return "cli-proxy-api"
 }
 
 function Stop-RegisteredProcess([string]$Name) {
@@ -93,6 +114,20 @@ function Get-BuildMetadata {
     }
 }
 
+function Remove-FileWithRetry([string]$Path, [int]$Attempts = 10) {
+    for ($i = 1; $i -le $Attempts; $i++) {
+        try {
+            Remove-Item -LiteralPath $Path -Force -ErrorAction Stop
+            return
+        } catch {
+            if ($i -eq $Attempts) {
+                throw
+            }
+            Start-Sleep -Milliseconds 300
+        }
+    }
+}
+
 if (-not (Test-Path -LiteralPath $EcosystemFile)) {
     throw "PM2 ecosystem file not found: $EcosystemFile"
 }
@@ -106,11 +141,17 @@ if (-not (Get-Command pm2 -ErrorAction SilentlyContinue)) {
     throw "PM2 is not available in PATH"
 }
 
+$crossCompiling = -not [string]::IsNullOrWhiteSpace($GoOS) -or -not [string]::IsNullOrWhiteSpace($GoArch)
+$ecosystemBinary = Get-EcosystemBinaryName $EcosystemFile
+if (-not $crossCompiling -and $outputName -ne $ecosystemBinary) {
+    throw "OutputPath '$outputName' does not match the binary '$ecosystemBinary' expected by $EcosystemFile. Pass a matching -OutputPath or cross-compile explicitly with -GoOS/-GoArch."
+}
+
 $wasRegistered = Stop-RegisteredProcess $AppName
 Stop-StandaloneProcess
 
 if (Test-Path -LiteralPath $tempPath) {
-    Remove-Item -LiteralPath $tempPath -Force
+    Remove-FileWithRetry $tempPath
 }
 
 $metadata = Get-BuildMetadata
@@ -118,15 +159,25 @@ $ldFlags = "-s -w -X main.Version=$($metadata.Version) -X main.Commit=$($metadat
 $env:CGO_ENABLED = "1"
 
 Write-Host "Building $outputName $($metadata.Version) ($($metadata.Commit))"
-& go build -trimpath -ldflags $ldFlags -o $tempPath ./cmd/server
-if ($LASTEXITCODE -ne 0) {
+if (-not [string]::IsNullOrWhiteSpace($GoOS)) { $env:GOOS = $GoOS }
+if (-not [string]::IsNullOrWhiteSpace($GoArch)) { $env:GOARCH = $GoArch }
+$buildArgs = @("build", "-trimpath", "-ldflags", $ldFlags, "-o", $tempPath, "./cmd/server")
+& go @buildArgs
+$buildExitCode = $LASTEXITCODE
+if ($buildExitCode -ne 0) {
     if ($wasRegistered) {
         Write-Warning "Build failed; restarting the previous PM2 process"
         & pm2 restart $AppName --update-env
+    } else {
+        Write-Warning "Build failed; no previous PM2 process to restore. The service is now stopped."
     }
-    throw "Go build failed with exit code $LASTEXITCODE"
+    throw "Go build failed with exit code $buildExitCode"
 }
 
+# Replace the binary in place. Retry because a just-stopped process may still hold the file briefly.
+if (Test-Path -LiteralPath $OutputPath) {
+    Remove-FileWithRetry $OutputPath
+}
 Move-Item -LiteralPath $tempPath -Destination $OutputPath -Force
 
 Write-Host "Starting PM2 process: $AppName"
@@ -140,7 +191,7 @@ if ($LASTEXITCODE -ne 0) {
 }
 
 $port = Get-ServicePort $ConfigPath
-$healthUrl = "http://127.0.0.1:$port/"
+$healthUrl = "http://127.0.0.1:$port/healthz"
 $deadline = (Get-Date).AddSeconds($HealthTimeoutSeconds)
 $healthy = $false
 while ((Get-Date) -lt $deadline) {

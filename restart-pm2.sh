@@ -9,6 +9,8 @@ OUTPUT_PATH="${OUTPUT_PATH:-$PROJECT_ROOT/cli-proxy-api}"
 ECOSYSTEM_FILE="${ECOSYSTEM_FILE:-$PROJECT_ROOT/ecosystem.config.cjs}"
 HEALTH_TIMEOUT_SECONDS="${HEALTH_TIMEOUT_SECONDS:-30}"
 CGO_ENABLED="${CGO_ENABLED:-1}"
+GOOS_OVERRIDE="${GOOS_OVERRIDE:-}"
+GOARCH_OVERRIDE="${GOARCH_OVERRIDE:-}"
 TEMP_PATH="$OUTPUT_PATH.tmp"
 OUTPUT_NAME="$(basename "$OUTPUT_PATH")"
 
@@ -32,9 +34,23 @@ if ! command -v pm2 >/dev/null 2>&1; then
     exit 1
 fi
 
+# The ecosystem file derives the binary name from the PM2 host platform.
+ecosystem_binary() {
+    case "$(uname -s)" in
+        MINGW*|MSYS*|CYGWIN*) printf '%s' "cli-proxy-api.exe" ;;
+        *) printf '%s' "cli-proxy-api" ;;
+    esac
+}
+
+# Read server.port from the "server:" block; fall back to the default 8317.
 get_service_port() {
     local port
-    port="$(sed -n -E 's/^[[:space:]]*port:[[:space:]]*([0-9]+).*/\1/p' "$CONFIG_PATH" | head -n 1)"
+    port="$(awk '
+        /^[^[:space:]#][^:]*:/ { in_server = ($0 ~ /^server[[:space:]]*:/) ; next }
+        in_server && $0 ~ /^[[:space:]]+port[[:space:]]*:[[:space:]]*"?[0-9]+/ {
+            if (match($0, /[0-9]+/)) { print substr($0, RSTART, RLENGTH); exit }
+        }
+    ' "$CONFIG_PATH")"
     printf '%s' "${port:-8317}"
 }
 
@@ -74,6 +90,17 @@ stop_standalone_process() {
     done <<< "$pids"
 }
 
+cross_compiling=0
+if [[ -n "$GOOS_OVERRIDE" || -n "$GOARCH_OVERRIDE" ]]; then
+    cross_compiling=1
+fi
+
+if [[ "$cross_compiling" == "0" && "$OUTPUT_NAME" != "$(ecosystem_binary)" ]]; then
+    echo "OutputPath '$OUTPUT_NAME' does not match the binary '$(ecosystem_binary)' expected by $ECOSYSTEM_FILE." >&2
+    echo "Pass a matching OUTPUT_PATH or cross-compile explicitly with GOOS_OVERRIDE/GOARCH_OVERRIDE." >&2
+    exit 1
+fi
+
 registered="$(stop_registered_process)"
 stop_standalone_process
 
@@ -93,10 +120,19 @@ fi
 ldflags="-s -w -X main.Version=$version -X main.Commit=$commit -X main.BuildDate=$build_date"
 
 echo "Building $OUTPUT_NAME $version ($commit)"
-if ! CGO_ENABLED="$CGO_ENABLED" go build -C "$PROJECT_ROOT" -trimpath -ldflags "$ldflags" -o "$TEMP_PATH" ./cmd/server; then
+build_env=(CGO_ENABLED="$CGO_ENABLED")
+if [[ -n "$GOOS_OVERRIDE" ]]; then
+    build_env+=(GOOS="$GOOS_OVERRIDE")
+fi
+if [[ -n "$GOARCH_OVERRIDE" ]]; then
+    build_env+=(GOARCH="$GOARCH_OVERRIDE")
+fi
+if ! env "${build_env[@]}" go build -C "$PROJECT_ROOT" -trimpath -ldflags "$ldflags" -o "$TEMP_PATH" ./cmd/server; then
     if [[ "$registered" == "1" ]]; then
         echo "Build failed; restarting the previous PM2 process" >&2
         pm2 restart "$APP_NAME" --update-env
+    else
+        echo "Build failed; no previous PM2 process to restore. The service is now stopped." >&2
     fi
     echo "Go build failed" >&2
     exit 1
@@ -112,7 +148,7 @@ else
 fi
 
 port="$(get_service_port)"
-health_url="http://127.0.0.1:$port/"
+health_url="http://127.0.0.1:$port/healthz"
 healthy=0
 elapsed=0
 while (( elapsed < HEALTH_TIMEOUT_SECONDS )); do
