@@ -3368,10 +3368,7 @@
       ],
       "supportedOutputModalities": [
         "text"
-      ],
-      "native_capabilities": {
-        "web_search": true
-      }
+      ]
     },
     {
       "id": "codex-auto-review",
@@ -4845,6 +4842,13 @@
       "description": "DeepSeek flagship model, supporting 1M context window, native multimodal model",
       "context_length": 1000000,
       "max_completion_tokens": 128000,
+      "thinking": {
+        "levels": [
+          "low",
+          "high",
+          "max"
+        ]
+      },
       "supportedInputModalities": [
         "text",
         "image"
@@ -4864,6 +4868,13 @@
       "description": "Native multimodal model, excelling at visual understanding and professional tasks.",
       "context_length": 1000000,
       "max_completion_tokens": 131072,
+      "thinking": {
+        "levels": [
+          "low",
+          "high",
+          "max"
+        ]
+      },
       "supportedInputModalities": [
         "text",
         "image"
@@ -4902,6 +4913,13 @@
       "description": "Flagship model, excelling at complex software engineering and long-horizon agent tasks",
       "context_length": 1000000,
       "max_completion_tokens": 64000,
+      "thinking": {
+        "levels": [
+          "low",
+          "high",
+          "max"
+        ]
+      },
       "supportedInputModalities": [
         "text",
         "image"
