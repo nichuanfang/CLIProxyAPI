@@ -9,6 +9,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/router-for-me/CLIProxyAPI/v8/internal/creditstats"
 	translatorcommon "github.com/router-for-me/CLIProxyAPI/v8/internal/translator/common"
 	"github.com/tidwall/gjson"
 	"github.com/tidwall/sjson"
@@ -66,6 +67,10 @@ type oaiToResponsesState struct {
 	TotalTokens      int64
 	ReasoningTokens  int64
 	UsageSeen        bool
+	// Credit is the CodeBuddy-specific per-request cost reported in usage.
+	Credit float64
+	// Model caches the upstream model name seen on the stream for stats.
+	Model string
 }
 
 // responseIDCounter provides a process-wide unique counter for synthesized response identifiers.
@@ -327,7 +332,19 @@ func ConvertOpenAIChatCompletionsResponseToOpenAIResponses(ctx context.Context, 
 		}
 	}
 
+	// Cache the upstream model for credit attribution; chunks usually repeat it.
+	if st.Model == "" {
+		if v := root.Get("model"); v.Exists() {
+			st.Model = v.String()
+		}
+	}
+
 	if usage := root.Get("usage"); usage.Exists() {
+		// Gate on the entry value so repeated usage blocks in one stream count once.
+		firstUsage := !st.UsageSeen
+		if v := usage.Get("credit"); v.Exists() {
+			st.Credit = v.Float()
+		}
 		if v := usage.Get("prompt_tokens"); v.Exists() {
 			st.PromptTokens = v.Int()
 			st.UsageSeen = true
@@ -353,6 +370,13 @@ func ConvertOpenAIChatCompletionsResponseToOpenAIResponses(ctx context.Context, 
 		if v := usage.Get("total_tokens"); v.Exists() {
 			st.TotalTokens = v.Int()
 			st.UsageSeen = true
+		}
+		if firstUsage && st.Credit > 0 {
+			tokens := st.TotalTokens
+			if tokens == 0 {
+				tokens = st.PromptTokens + st.CompletionTokens
+			}
+			creditstats.Record(st.Model, st.Credit, tokens)
 		}
 	}
 
@@ -1130,6 +1154,14 @@ func ConvertOpenAIChatCompletionsResponseToOpenAIResponsesNonStream(_ context.Co
 
 	// usage mapping
 	if usage := root.Get("usage"); usage.Exists() {
+		// Record the CodeBuddy-specific credit cost once per response.
+		if credit := usage.Get("credit"); credit.Exists() && credit.Float() > 0 {
+			tokens := usage.Get("total_tokens").Int()
+			if tokens == 0 {
+				tokens = usage.Get("prompt_tokens").Int() + usage.Get("completion_tokens").Int()
+			}
+			creditstats.Record(root.Get("model").String(), credit.Float(), tokens)
+		}
 		// Map common tokens
 		if usage.Get("prompt_tokens").Exists() || usage.Get("completion_tokens").Exists() || usage.Get("total_tokens").Exists() {
 			resp, _ = sjson.SetBytes(resp, "usage.input_tokens", usage.Get("prompt_tokens").Int())

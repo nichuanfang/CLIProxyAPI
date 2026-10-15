@@ -64,6 +64,7 @@ func (s *Server) setupRoutes() {
 	v1 := s.engine.Group("/v1")
 	v1.Use(AuthMiddleware(s.accessManager))
 	{
+		v1.GET("/credit-usage", creditUsageHandler)
 		v1.GET("/models", s.unifiedModelsHandler(openaiHandlers, claudeCodeHandlers))
 		v1.GET("/models/*model", func(c *gin.Context) {
 			c.Set(handlers.ModelDetailIDContextKey, strings.TrimPrefix(c.Param("model"), "/"))
@@ -82,9 +83,9 @@ func (s *Server) setupRoutes() {
 		v1.POST("/tts", openaiHandlers.XAITTS)
 		v1.POST("/messages", claudeCodeHandlers.ClaudeMessages)
 		v1.POST("/messages/count_tokens", claudeCodeHandlers.ClaudeCountTokens)
-		v1.GET("/responses", openaiResponsesHandlers.ResponsesWebsocket)
-		v1.POST("/responses", openaiResponsesHandlers.Responses)
-		v1.POST("/responses/compact", openaiResponsesHandlers.Compact)
+		v1.GET("/responses", codexCreditsMiddleware(), openaiResponsesHandlers.ResponsesWebsocket)
+		v1.POST("/responses", codexCreditsMiddleware(), openaiResponsesHandlers.Responses)
+		v1.POST("/responses/compact", codexCreditsMiddleware(), openaiResponsesHandlers.Compact)
 		v1.POST("/alpha/search", s.codexAlphaSearch)
 		v1.POST("/live", s.codexLiveHandler.Handle)
 		v1.GET("/live/:call_id", s.codexLiveHandler.HandleSideband)
@@ -119,9 +120,9 @@ func (s *Server) setupRoutes() {
 	codexDirect := s.engine.Group("/backend-api/codex")
 	codexDirect.Use(AuthMiddleware(s.accessManager))
 	{
-		codexDirect.GET("/responses", openaiResponsesHandlers.ResponsesWebsocket)
-		codexDirect.POST("/responses", openaiResponsesHandlers.Responses)
-		codexDirect.POST("/responses/compact", openaiResponsesHandlers.Compact)
+		codexDirect.GET("/responses", codexCreditsMiddleware(), openaiResponsesHandlers.ResponsesWebsocket)
+		codexDirect.POST("/responses", codexCreditsMiddleware(), openaiResponsesHandlers.Responses)
+		codexDirect.POST("/responses/compact", codexCreditsMiddleware(), openaiResponsesHandlers.Compact)
 		codexDirect.POST("/alpha/search", s.codexAlphaSearch)
 	}
 
