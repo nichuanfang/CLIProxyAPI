@@ -23,6 +23,7 @@ import (
 	sdktranslator "github.com/router-for-me/CLIProxyAPI/v8/sdk/translator"
 	log "github.com/sirupsen/logrus"
 	"github.com/tidwall/gjson"
+	"github.com/tidwall/sjson"
 )
 
 var _ cliproxyauth.ProviderExecutor = (*CodeBuddyExecutor)(nil)
@@ -73,6 +74,12 @@ func (e *CodeBuddyExecutor) HttpRequest(ctx context.Context, auth *cliproxyauth.
 // CodeBuddy upstream rejects non-stream requests, so the executor always
 // requests a stream upstream and aggregates SSE frames into a single response.
 func (e *CodeBuddyExecutor) Execute(ctx context.Context, auth *cliproxyauth.Auth, req cliproxyexecutor.Request, opts cliproxyexecutor.Options) (resp cliproxyexecutor.Response, err error) {
+	if errExpand := expandClaudeResponsesCompaction(&req, &opts); errExpand != nil {
+		return resp, errExpand
+	}
+	if codeBuddyCompactionRequested(req, opts) {
+		return e.executeCodeBuddyCompaction(ctx, auth, req, opts)
+	}
 	ctx = helps.EnsureSessionContext(ctx, opts, req.Payload)
 	baseModel := thinking.ParseSuffix(req.Model).ModelName
 
@@ -113,6 +120,9 @@ func (e *CodeBuddyExecutor) Execute(ctx context.Context, auth *cliproxyauth.Auth
 	}
 	reporter.SetTranslatedReasoningEffort(translated, to.String())
 	translated = helps.SetBoolIfDifferent(translated, "stream", true)
+	if codeBuddyCompactionSummaryFromContext(ctx) {
+		translated = finalizeCodeBuddyCompactionSummaryBody(translated)
+	}
 	translated = helps.ApplyPayloadConfigWithRequest(e.cfg, baseModel, to.String(), from.String(), "", translated, originalTranslated, requestedModel, requestPath, opts.Headers)
 
 	httpReq, errNew := http.NewRequestWithContext(ctx, http.MethodPost, baseURL+codebuddyauth.ChatPath, bytes.NewReader(translated))
@@ -316,7 +326,17 @@ func aggregateCodeBuddyStream(r io.Reader) ([]byte, usage.Detail, bool, error) {
 		result["model"] = model
 	}
 	if usageRaw != nil {
-		result["usage"] = json.RawMessage(gjson.GetBytes(usageRaw, "usage").Raw)
+		usageNode := gjson.GetBytes(usageRaw, "usage")
+		usageJSON := []byte(usageNode.Raw)
+		// Mirror Responses-style aliases so downstream consumers (compaction,
+		// usage accounting) can read either OpenAI Chat or Responses field names.
+		if pt := usageNode.Get("prompt_tokens"); pt.Exists() {
+			usageJSON, _ = sjson.SetBytes(usageJSON, "input_tokens", pt.Int())
+		}
+		if ct := usageNode.Get("completion_tokens"); ct.Exists() {
+			usageJSON, _ = sjson.SetBytes(usageJSON, "output_tokens", ct.Int())
+		}
+		result["usage"] = json.RawMessage(usageJSON)
 	}
 
 	out, errMarshal := json.Marshal(result)
@@ -328,6 +348,12 @@ func aggregateCodeBuddyStream(r io.Reader) ([]byte, usage.Detail, bool, error) {
 
 // ExecuteStream performs a streaming chat completion and translates OpenAI SSE chunks.
 func (e *CodeBuddyExecutor) ExecuteStream(ctx context.Context, auth *cliproxyauth.Auth, req cliproxyexecutor.Request, opts cliproxyexecutor.Options) (_ *cliproxyexecutor.StreamResult, err error) {
+	if errExpand := expandClaudeResponsesCompaction(&req, &opts); errExpand != nil {
+		return nil, errExpand
+	}
+	if codeBuddyCompactionRequested(req, opts) {
+		return e.executeCodeBuddyCompactionStream(ctx, auth, req, opts)
+	}
 	ctx = helps.EnsureSessionContext(ctx, opts, req.Payload)
 	baseModel := thinking.ParseSuffix(req.Model).ModelName
 
