@@ -4840,14 +4840,17 @@
       "display_name": "Deepseek-V4.1-Flash",
       "name": "deepseek-v4.1-flash",
       "description": "DeepSeek flagship model, supporting 1M context window, native multimodal model",
-      "context_length": 1000000,
+      "context_length": 1048576,
       "max_completion_tokens": 128000,
       "thinking": {
         "levels": [
           "low",
+          "medium",
           "high",
-          "max"
-        ]
+          "max",
+          "none"
+        ],
+        "zero_allowed": true
       },
       "supportedInputModalities": [
         "text",
@@ -4866,14 +4869,17 @@
       "display_name": "GLM-5.3-FlashX",
       "name": "glm-5.3-flashx",
       "description": "Native multimodal model, excelling at visual understanding and professional tasks.",
-      "context_length": 1000000,
+      "context_length": 1048576,
       "max_completion_tokens": 131072,
       "thinking": {
         "levels": [
           "low",
+          "medium",
           "high",
-          "max"
-        ]
+          "max",
+          "none"
+        ],
+        "zero_allowed": true
       },
       "supportedInputModalities": [
         "text",
@@ -4892,8 +4898,18 @@
       "display_name": "Kimi-K3",
       "name": "kimi-k3-2",
       "description": "Excels at complex, long-horizon autonomous tasks, with standout front-end skills and strong knowledge work and scientific reasoning",
-      "context_length": 1000000,
+      "context_length": 1048576,
       "max_completion_tokens": 32000,
+      "thinking": {
+        "levels": [
+          "low",
+          "medium",
+          "high",
+          "max",
+          "none"
+        ],
+        "zero_allowed": true
+      },
       "supportedInputModalities": [
         "text",
         "image"
@@ -4911,14 +4927,17 @@
       "display_name": "GLM-5.3",
       "name": "glm-5.3",
       "description": "Flagship model, excelling at complex software engineering and long-horizon agent tasks",
-      "context_length": 1000000,
+      "context_length": 1048576,
       "max_completion_tokens": 64000,
       "thinking": {
         "levels": [
           "low",
+          "medium",
           "high",
-          "max"
-        ]
+          "max",
+          "none"
+        ],
+        "zero_allowed": true
       },
       "supportedInputModalities": [
         "text",
@@ -4937,8 +4956,18 @@
       "display_name": "Space-Bunny",
       "name": "space-bunny",
       "description": "CodeBuddy account model (no product metadata available).",
-      "context_length": 1000000,
+      "context_length": 1048576,
       "max_completion_tokens": 64000,
+      "thinking": {
+        "levels": [
+          "low",
+          "medium",
+          "high",
+          "max",
+          "none"
+        ],
+        "zero_allowed": true
+      },
       "supportedInputModalities": [
         "text"
       ],
