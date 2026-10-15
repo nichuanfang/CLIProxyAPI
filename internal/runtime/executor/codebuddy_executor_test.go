@@ -23,8 +23,9 @@ func TestCodeBuddyExecutorExecute(t *testing.T) {
 		gotPath = r.URL.Path
 		body, _ := io.ReadAll(r.Body)
 		gotBody = body
-		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"id":"chatcmpl-1","object":"chat.completion","model":"glm5.3","choices":[{"index":0,"message":{"role":"assistant","content":"hello"},"finish_reason":"stop"}],"usage":{"prompt_tokens":2,"completion_tokens":1,"total_tokens":3}}`))
+		w.Header().Set("Content-Type", "text/event-stream")
+		_, _ = w.Write([]byte("data: {\"id\":\"chatcmpl-1\",\"object\":\"chat.completion.chunk\",\"model\":\"glm5.3\",\"choices\":[{\"index\":0,\"delta\":{\"role\":\"assistant\",\"content\":\"hello\"},\"finish_reason\":\"stop\"}],\"usage\":{\"prompt_tokens\":2,\"completion_tokens\":1,\"total_tokens\":3}}\n\n"))
+		_, _ = w.Write([]byte("data: [DONE]\n\n"))
 	}))
 	defer server.Close()
 
@@ -48,6 +49,9 @@ func TestCodeBuddyExecutorExecute(t *testing.T) {
 	}
 	if got := gjson.GetBytes(gotBody, "messages.0.content").String(); got != "hi" {
 		t.Fatalf("payload not translated: %s", string(gotBody))
+	}
+	if got := gjson.GetBytes(gotBody, "stream").Bool(); !got {
+		t.Fatalf("upstream request must force stream=true: %s", string(gotBody))
 	}
 	if got := gjson.GetBytes(resp.Payload, "choices.0.message.content").String(); got != "hello" {
 		t.Fatalf("response content = %s, payload=%s", got, string(resp.Payload))
@@ -95,8 +99,9 @@ func TestCodeBuddyExecutorHeadersAndCountTokens(t *testing.T) {
 		authHeader = r.Header.Get("Authorization")
 		ideHeader = r.Header.Get("X-IDE-Type")
 		intentHeader = r.Header.Get("X-Agent-Intent")
-		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"choices":[{"message":{"content":"ok"}}]}`))
+		w.Header().Set("Content-Type", "text/event-stream")
+		_, _ = w.Write([]byte("data: {\"choices\":[{\"index\":0,\"delta\":{\"content\":\"ok\"},\"finish_reason\":\"stop\"}]}\n\n"))
+		_, _ = w.Write([]byte("data: [DONE]\n\n"))
 	}))
 	defer server.Close()
 
@@ -115,8 +120,15 @@ func TestCodeBuddyExecutorHeadersAndCountTokens(t *testing.T) {
 	if authHeader != "Bearer secret" || ideHeader != "CodeBuddyIDE" || intentHeader != "craft" {
 		t.Fatalf("headers = %q %q %q", authHeader, ideHeader, intentHeader)
 	}
-	if _, err := executor.CountTokens(context.Background(), auth, cliproxyexecutor.Request{}, cliproxyexecutor.Options{}); err == nil {
-		t.Fatal("CountTokens() expected unsupported error")
+	countResp, err := executor.CountTokens(context.Background(), auth, cliproxyexecutor.Request{
+		Model:   "glm5.3",
+		Payload: []byte(`{"model":"glm5.3","messages":[{"role":"user","content":"hello world"}]}`),
+	}, cliproxyexecutor.Options{SourceFormat: sdktranslator.FormatOpenAI})
+	if err != nil {
+		t.Fatalf("CountTokens() error = %v", err)
+	}
+	if got := gjson.GetBytes(countResp.Payload, "usage.prompt_tokens").Int(); got <= 0 {
+		t.Fatalf("CountTokens() prompt_tokens = %d, payload=%s", got, string(countResp.Payload))
 	}
 }
 
@@ -164,8 +176,9 @@ func TestCodeBuddyExecutorToolTranslation(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		body, _ := io.ReadAll(r.Body)
 		gotBody = body
-		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"id":"chatcmpl-tool","object":"chat.completion","model":"glm5.3","choices":[{"index":0,"message":{"role":"assistant","content":"","tool_calls":[{"id":"call_1","type":"function","function":{"name":"get_weather","arguments":"{\"city\":\"Beijing\"}"}}]},"finish_reason":"tool_calls"}],"usage":{"prompt_tokens":9,"completion_tokens":5,"total_tokens":14}}`))
+		w.Header().Set("Content-Type", "text/event-stream")
+		_, _ = w.Write([]byte("data: {\"id\":\"chatcmpl-tool\",\"object\":\"chat.completion.chunk\",\"model\":\"glm5.3\",\"choices\":[{\"index\":0,\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"call_1\",\"type\":\"function\",\"function\":{\"name\":\"get_weather\",\"arguments\":\"{\\\"city\\\":\\\"Beijing\\\"}\"}}]},\"finish_reason\":\"tool_calls\"}],\"usage\":{\"prompt_tokens\":9,\"completion_tokens\":5,\"total_tokens\":14}}\n\n"))
+		_, _ = w.Write([]byte("data: [DONE]\n\n"))
 	}))
 	defer server.Close()
 
@@ -214,8 +227,9 @@ func TestCodeBuddyExecutorToolResultTranslation(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		body, _ := io.ReadAll(r.Body)
 		gotBody = body
-		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"id":"chatcmpl-after-tool","object":"chat.completion","model":"glm5.3","choices":[{"index":0,"message":{"role":"assistant","content":"Sunny, 31C."},"finish_reason":"stop"}],"usage":{"prompt_tokens":11,"completion_tokens":4,"total_tokens":15}}`))
+		w.Header().Set("Content-Type", "text/event-stream")
+		_, _ = w.Write([]byte("data: {\"id\":\"chatcmpl-after-tool\",\"object\":\"chat.completion.chunk\",\"model\":\"glm5.3\",\"choices\":[{\"index\":0,\"delta\":{\"role\":\"assistant\",\"content\":\"Sunny, 31C.\"},\"finish_reason\":\"stop\"}],\"usage\":{\"prompt_tokens\":11,\"completion_tokens\":4,\"total_tokens\":15}}\n\n"))
+		_, _ = w.Write([]byte("data: [DONE]\n\n"))
 	}))
 	defer server.Close()
 
@@ -295,5 +309,97 @@ func TestCodeBuddyExecutorToolCallStream(t *testing.T) {
 	}
 	if !bytes.Contains(payloadOut, []byte("Beijing")) {
 		t.Fatalf("stream payload missing tool input: %s", string(payloadOut))
+	}
+}
+
+func TestCodeBuddyExecutorExecuteAggregatesReasoningAndUsage(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		_, _ = w.Write([]byte("data: {\"id\":\"chatcmpl-r\",\"object\":\"chat.completion.chunk\",\"model\":\"deepseek-v4.1-flash\",\"choices\":[{\"index\":0,\"delta\":{\"reasoning_content\":\"think\"}}]}\n\n"))
+		_, _ = w.Write([]byte("data: {\"id\":\"chatcmpl-r\",\"object\":\"chat.completion.chunk\",\"model\":\"deepseek-v4.1-flash\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"answer\"},\"finish_reason\":\"stop\"}],\"usage\":{\"prompt_tokens\":5,\"completion_tokens\":2,\"total_tokens\":7,\"completion_tokens_details\":{\"reasoning_tokens\":1}}}\n\n"))
+		_, _ = w.Write([]byte("data: [DONE]\n\n"))
+	}))
+	defer server.Close()
+
+	executor := NewCodeBuddyExecutor(&config.Config{})
+	auth := &cliproxyauth.Auth{
+		Attributes: map[string]string{"base_url": server.URL},
+		Metadata:   map[string]any{"access_token": "token"},
+	}
+	resp, err := executor.Execute(context.Background(), auth, cliproxyexecutor.Request{
+		Model:   "deepseek-v4.1-flash",
+		Payload: []byte(`{"model":"deepseek-v4.1-flash","messages":[{"role":"user","content":"hi"}]}`),
+	}, cliproxyexecutor.Options{SourceFormat: sdktranslator.FormatOpenAI})
+	if err != nil {
+		t.Fatalf("Execute() error = %v", err)
+	}
+	if got := gjson.GetBytes(resp.Payload, "choices.0.message.content").String(); got != "answer" {
+		t.Fatalf("content = %q, payload=%s", got, string(resp.Payload))
+	}
+	if got := gjson.GetBytes(resp.Payload, "choices.0.message.reasoning_content").String(); got != "think" {
+		t.Fatalf("reasoning_content = %q, payload=%s", got, string(resp.Payload))
+	}
+	if got := gjson.GetBytes(resp.Payload, "usage.total_tokens").Int(); got != 7 {
+		t.Fatalf("usage.total_tokens = %d, payload=%s", got, string(resp.Payload))
+	}
+}
+
+func TestCodeBuddyExecutorExecuteInjectsPromptCacheKey(t *testing.T) {
+	var gotBody []byte
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		gotBody = body
+		w.Header().Set("Content-Type", "text/event-stream")
+		_, _ = w.Write([]byte("data: {\"choices\":[{\"index\":0,\"delta\":{\"content\":\"ok\"},\"finish_reason\":\"stop\"}]}\n\n"))
+		_, _ = w.Write([]byte("data: [DONE]\n\n"))
+	}))
+	defer server.Close()
+
+	executor := NewCodeBuddyExecutor(&config.Config{})
+	auth := &cliproxyauth.Auth{
+		Attributes: map[string]string{"base_url": server.URL},
+		Metadata:   map[string]any{"access_token": "token"},
+	}
+	_, err := executor.Execute(context.Background(), auth, cliproxyexecutor.Request{
+		Model:    "glm5.3",
+		Payload:  []byte(`{"model":"glm5.3","messages":[{"role":"user","content":"hi"}],"metadata":{"session_id":"sess-1"}}`),
+		Metadata: map[string]any{"session_id": "sess-1"},
+	}, cliproxyexecutor.Options{SourceFormat: sdktranslator.FormatOpenAI, Metadata: map[string]any{cliproxyexecutor.ExecutionSessionMetadataKey: "sess-1"}})
+	if err != nil {
+		t.Fatalf("Execute() error = %v", err)
+	}
+	if got := gjson.GetBytes(gotBody, "prompt_cache_key").String(); got == "" {
+		t.Fatalf("prompt_cache_key not injected: %s", string(gotBody))
+	}
+}
+
+func TestCodeBuddyExecutorThinkingLevelsInjected(t *testing.T) {
+	var gotBody []byte
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		gotBody = body
+		w.Header().Set("Content-Type", "text/event-stream")
+		_, _ = w.Write([]byte("data: {\"choices\":[{\"index\":0,\"delta\":{\"content\":\"ok\"},\"finish_reason\":\"stop\"}]}\n\n"))
+		_, _ = w.Write([]byte("data: [DONE]\n\n"))
+	}))
+	defer server.Close()
+
+	executor := NewCodeBuddyExecutor(&config.Config{})
+	auth := &cliproxyauth.Auth{
+		Attributes: map[string]string{"base_url": server.URL},
+		Metadata:   map[string]any{"access_token": "token"},
+	}
+	_, err := executor.Execute(context.Background(), auth, cliproxyexecutor.Request{
+		Model:   "deepseek-v4.1-flash(medium)",
+		Payload: []byte(`{"model":"deepseek-v4.1-flash","messages":[{"role":"user","content":"hi"}]}`),
+	}, cliproxyexecutor.Options{SourceFormat: sdktranslator.FormatOpenAI})
+	if err != nil {
+		t.Fatalf("Execute() error = %v", err)
+	}
+	if got := gjson.GetBytes(gotBody, "reasoning_effort").String(); got != "medium" {
+		t.Fatalf("reasoning_effort = %q, body=%s", got, string(gotBody))
+	}
+	if got := gjson.GetBytes(gotBody, "model").String(); got != "deepseek-v4.1-flash" {
+		t.Fatalf("model suffix not stripped: %q", got)
 	}
 }

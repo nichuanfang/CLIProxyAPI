@@ -11,14 +11,18 @@ import (
 	"strings"
 	"time"
 
+	"github.com/google/uuid"
 	codebuddyauth "github.com/router-for-me/CLIProxyAPI/v8/internal/auth/codebuddy"
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/config"
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/runtime/executor/helps"
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/thinking"
+	"github.com/router-for-me/CLIProxyAPI/v8/internal/util"
 	cliproxyauth "github.com/router-for-me/CLIProxyAPI/v8/sdk/cliproxy/auth"
 	cliproxyexecutor "github.com/router-for-me/CLIProxyAPI/v8/sdk/cliproxy/executor"
+	"github.com/router-for-me/CLIProxyAPI/v8/sdk/cliproxy/usage"
 	sdktranslator "github.com/router-for-me/CLIProxyAPI/v8/sdk/translator"
 	log "github.com/sirupsen/logrus"
+	"github.com/tidwall/gjson"
 )
 
 var _ cliproxyauth.ProviderExecutor = (*CodeBuddyExecutor)(nil)
@@ -66,6 +70,8 @@ func (e *CodeBuddyExecutor) HttpRequest(ctx context.Context, auth *cliproxyauth.
 }
 
 // Execute performs a non-streaming chat completion.
+// CodeBuddy upstream rejects non-stream requests, so the executor always
+// requests a stream upstream and aggregates SSE frames into a single response.
 func (e *CodeBuddyExecutor) Execute(ctx context.Context, auth *cliproxyauth.Auth, req cliproxyexecutor.Request, opts cliproxyexecutor.Options) (resp cliproxyexecutor.Response, err error) {
 	ctx = helps.EnsureSessionContext(ctx, opts, req.Payload)
 	baseModel := thinking.ParseSuffix(req.Model).ModelName
@@ -86,8 +92,9 @@ func (e *CodeBuddyExecutor) Execute(ctx context.Context, auth *cliproxyauth.Auth
 	if len(opts.OriginalRequest) > 0 {
 		originalPayload = opts.OriginalRequest
 	}
-	_, translated, updatesChanged, err := helps.TranslateRequestPairWithAPIKeyModelCompatibilityAndUpdateIntent(
-		ctx, opts.Headers, e.cfg, from, to, baseModel, originalPayload, req.Payload, opts.Stream, false,
+	// Upstream only supports streaming; always translate as a stream request.
+	originalTranslated, translated, updatesChanged, err := helps.TranslateRequestPairWithAPIKeyModelCompatibilityAndUpdateIntent(
+		ctx, opts.Headers, e.cfg, from, to, baseModel, originalPayload, req.Payload, true, false,
 	)
 	if err != nil {
 		return resp, err
@@ -98,16 +105,27 @@ func (e *CodeBuddyExecutor) Execute(ctx context.Context, auth *cliproxyauth.Auth
 	}
 	requestedModel := helps.PayloadRequestedModel(opts, req.Model)
 	requestPath := helps.PayloadRequestPath(opts)
-	translated = helps.ApplyPayloadConfigWithRequest(e.cfg, baseModel, to.String(), from.String(), "", translated, translated, requestedModel, requestPath, opts.Headers)
+	translated = helps.NormalizeOpenAIToolResultsTextOnly(translated)
 	translated = helps.NormalizeOpenAIMaxTokens(translated, false)
+	translated, err = e.applyPromptCacheKey(ctx, from, baseModel, req, opts, translated)
+	if err != nil {
+		return resp, err
+	}
 	reporter.SetTranslatedReasoningEffort(translated, to.String())
+	translated = helps.SetBoolIfDifferent(translated, "stream", true)
+	translated = helps.ApplyPayloadConfigWithRequest(e.cfg, baseModel, to.String(), from.String(), "", translated, originalTranslated, requestedModel, requestPath, opts.Headers)
 
 	httpReq, errNew := http.NewRequestWithContext(ctx, http.MethodPost, baseURL+codebuddyauth.ChatPath, bytes.NewReader(translated))
 	if errNew != nil {
 		err = fmt.Errorf("codebuddy executor: create request failed: %w", errNew)
 		return resp, err
 	}
-	codebuddyauth.ApplyChatHeaders(httpReq, token, false)
+	codebuddyauth.ApplyChatHeaders(httpReq, token, true)
+	var attrs map[string]string
+	if auth != nil {
+		attrs = auth.Attributes
+	}
+	util.ApplyCustomHeadersFromAttrs(httpReq, attrs, opts.Headers)
 	helps.RecordAPIRequest(ctx, e.cfg, helps.UpstreamRequestLog{
 		URL:       httpReq.URL.String(),
 		Method:    http.MethodPost,
@@ -141,23 +159,171 @@ func (e *CodeBuddyExecutor) Execute(ctx context.Context, auth *cliproxyauth.Auth
 		err = newOpenAICompatStatusError(httpResp.StatusCode, httpResp.Header, body)
 		return resp, err
 	}
-	body, errRead := io.ReadAll(httpResp.Body)
-	if errRead != nil {
-		helps.RecordAPIResponseError(ctx, e.cfg, errRead)
-		err = errRead
+
+	// Aggregate upstream SSE frames into a single chat completion response.
+	body, usageDetail, hasUsage, errAgg := aggregateCodeBuddyStream(httpResp.Body)
+	if errAgg != nil {
+		helps.RecordAPIResponseError(ctx, e.cfg, errAgg)
+		err = errAgg
 		return resp, err
 	}
 	helps.AppendAPIResponseChunk(ctx, e.cfg, body)
 	reporter.ObserveResponseModel(body)
-	reporter.Publish(ctx, helps.ParseOpenAIUsage(body))
+	if hasUsage {
+		reporter.Publish(ctx, usageDetail)
+	} else {
+		reporter.Publish(ctx, helps.ParseOpenAIUsage(body))
+	}
 	reporter.EnsurePublished(ctx)
 	var param any
-	out := sdktranslator.TranslateNonStream(ctx, to, responseFormat, req.Model, opts.OriginalRequest, translated, body, &param)
+	out := sdktranslator.TranslateNonStream(ctx, to, responseFormat, req.Model, helps.ApplyPatchOriginalRequest(req, opts), translated, body, &param)
+	if helps.ApplyPatchTranslationError(param) != nil || len(out) == 0 {
+		err = statusErr{code: http.StatusBadGateway, msg: helps.ApplyPatchUpstreamErrorMessage}
+		return resp, err
+	}
 	if responseFormat == sdktranslator.FormatOpenAIResponse {
 		out = helps.EnsureResponsesUsageDetails(out)
 	}
 	resp = cliproxyexecutor.Response{Payload: out, Headers: httpResp.Header.Clone()}
 	return resp, nil
+}
+
+// aggregateCodeBuddyStream consumes an OpenAI-compatible SSE stream and folds
+// the chunks into a single non-stream chat completion payload. Reasoning
+// deltas (reasoning_content) are preserved on the first choice message.
+func aggregateCodeBuddyStream(r io.Reader) ([]byte, usage.Detail, bool, error) {
+	var zeroUsageDetail usage.Detail
+	scanner := bufio.NewScanner(r)
+	scanner.Buffer(nil, 52_428_800) // 50MB
+
+	var (
+		chatID      string
+		created     int64
+		model       string
+		content     strings.Builder
+		reasoning   strings.Builder
+		finishCause string
+		usageRaw    []byte
+		usage       usage.Detail
+		hasUsage    bool
+		sawChunk    bool
+		sawDone     bool
+		toolCalls   = map[int]map[string]any{}
+		toolArgBuf  = map[int]*strings.Builder{}
+	)
+
+	for scanner.Scan() {
+		line := bytes.TrimSpace(scanner.Bytes())
+		if len(line) == 0 || !bytes.HasPrefix(line, []byte("data:")) {
+			continue
+		}
+		data := bytes.TrimSpace(line[len("data:"):])
+		if bytes.Equal(data, []byte("[DONE]")) {
+			sawDone = true
+			break
+		}
+		if !json.Valid(data) {
+			continue
+		}
+		sawChunk = true
+		if id := gjson.GetBytes(data, "id"); id.Exists() && chatID == "" {
+			chatID = id.String()
+		}
+		if c := gjson.GetBytes(data, "created"); c.Exists() && created == 0 {
+			created = c.Int()
+		}
+		if m := gjson.GetBytes(data, "model"); m.Exists() && model == "" {
+			model = m.String()
+		}
+		if u := gjson.GetBytes(data, "usage"); u.Exists() && u.IsObject() {
+			usageRaw = append([]byte(nil), data...)
+			usage = helps.ParseOpenAIUsage(data)
+			hasUsage = true
+		}
+		choices := gjson.GetBytes(data, "choices")
+		if !choices.Exists() || !choices.IsArray() {
+			continue
+		}
+		for _, choice := range choices.Array() {
+			delta := choice.Get("delta")
+			if rc := delta.Get("reasoning_content"); rc.Exists() {
+				reasoning.WriteString(rc.String())
+			}
+			if c := delta.Get("content"); c.Exists() {
+				content.WriteString(c.String())
+			}
+			for _, tc := range delta.Get("tool_calls").Array() {
+				idx := int(tc.Get("index").Int())
+				entry, ok := toolCalls[idx]
+				if !ok {
+					entry = map[string]any{"type": "function"}
+					toolCalls[idx] = entry
+					toolArgBuf[idx] = &strings.Builder{}
+				}
+				if id := tc.Get("id"); id.Exists() && id.String() != "" {
+					entry["id"] = id.String()
+				}
+				fn := tc.Get("function")
+				if name := fn.Get("name"); name.Exists() && name.String() != "" {
+					entry["function"] = map[string]any{"name": name.String()}
+				}
+				if args := fn.Get("arguments"); args.Exists() {
+					toolArgBuf[idx].WriteString(args.String())
+				}
+			}
+			if fr := choice.Get("finish_reason"); fr.Exists() && fr.String() != "" {
+				finishCause = fr.String()
+			}
+		}
+	}
+	if errScan := scanner.Err(); errScan != nil {
+		return nil, zeroUsageDetail, false, fmt.Errorf("codebuddy executor: read upstream stream failed: %w", errScan)
+	}
+	if !sawChunk && !sawDone {
+		return nil, zeroUsageDetail, false, statusErr{code: http.StatusBadGateway, msg: "upstream stream ended without data"}
+	}
+
+	message := map[string]any{"role": "assistant", "content": content.String()}
+	if reasoning.Len() > 0 {
+		message["reasoning_content"] = reasoning.String()
+	}
+	if len(toolCalls) > 0 {
+		ordered := make([]any, 0, len(toolCalls))
+		for i := 0; i < len(toolCalls); i++ {
+			entry := toolCalls[i]
+			if fn, ok := entry["function"].(map[string]any); ok {
+				fn["arguments"] = toolArgBuf[i].String()
+			}
+			ordered = append(ordered, entry)
+		}
+		message["tool_calls"] = ordered
+	}
+	if finishCause == "" {
+		finishCause = "stop"
+	}
+
+	result := map[string]any{
+		"object":  "chat.completion",
+		"choices": []any{map[string]any{"index": 0, "message": message, "finish_reason": finishCause}},
+	}
+	if chatID != "" {
+		result["id"] = chatID
+	}
+	if created != 0 {
+		result["created"] = created
+	}
+	if model != "" {
+		result["model"] = model
+	}
+	if usageRaw != nil {
+		result["usage"] = json.RawMessage(gjson.GetBytes(usageRaw, "usage").Raw)
+	}
+
+	out, errMarshal := json.Marshal(result)
+	if errMarshal != nil {
+		return nil, zeroUsageDetail, false, fmt.Errorf("codebuddy executor: marshal aggregated response failed: %w", errMarshal)
+	}
+	return out, usage, hasUsage, nil
 }
 
 // ExecuteStream performs a streaming chat completion and translates OpenAI SSE chunks.
@@ -180,7 +346,7 @@ func (e *CodeBuddyExecutor) ExecuteStream(ctx context.Context, auth *cliproxyaut
 	if len(opts.OriginalRequest) > 0 {
 		originalPayload = opts.OriginalRequest
 	}
-	_, translated, updatesChanged, err := helps.TranslateRequestPairWithAPIKeyModelCompatibilityAndUpdateIntent(
+	originalTranslated, translated, updatesChanged, err := helps.TranslateRequestPairWithAPIKeyModelCompatibilityAndUpdateIntent(
 		ctx, opts.Headers, e.cfg, from, to, baseModel, originalPayload, req.Payload, true, false,
 	)
 	if err != nil {
@@ -192,16 +358,27 @@ func (e *CodeBuddyExecutor) ExecuteStream(ctx context.Context, auth *cliproxyaut
 	}
 	requestedModel := helps.PayloadRequestedModel(opts, req.Model)
 	requestPath := helps.PayloadRequestPath(opts)
-	translated = helps.ApplyPayloadConfigWithRequest(e.cfg, baseModel, to.String(), from.String(), "", translated, translated, requestedModel, requestPath, opts.Headers)
+	translated = helps.NormalizeOpenAIToolResultsTextOnly(translated)
 	translated = helps.NormalizeOpenAIMaxTokens(translated, false)
+	translated, err = e.applyPromptCacheKey(ctx, from, baseModel, req, opts, translated)
+	if err != nil {
+		return nil, err
+	}
 	translated = helps.SetBoolIfDifferent(translated, "stream_options.include_usage", true)
 	reporter.SetTranslatedReasoningEffort(translated, to.String())
+	translated = helps.ApplyPayloadConfigWithRequest(e.cfg, baseModel, to.String(), from.String(), "", translated, originalTranslated, requestedModel, requestPath, opts.Headers)
 
 	httpReq, errNew := http.NewRequestWithContext(ctx, http.MethodPost, baseURL+codebuddyauth.ChatPath, bytes.NewReader(translated))
 	if errNew != nil {
 		return nil, fmt.Errorf("codebuddy executor: create request failed: %w", errNew)
 	}
 	codebuddyauth.ApplyChatHeaders(httpReq, token, true)
+	var streamAttrs map[string]string
+	if auth != nil {
+		streamAttrs = auth.Attributes
+	}
+	util.ApplyCustomHeadersFromAttrs(httpReq, streamAttrs, opts.Headers)
+	httpReq.Header.Set("Cache-Control", "no-cache")
 	helps.RecordAPIRequest(ctx, e.cfg, helps.UpstreamRequestLog{
 		URL:       httpReq.URL.String(),
 		Method:    http.MethodPost,
@@ -215,7 +392,8 @@ func (e *CodeBuddyExecutor) ExecuteStream(ctx context.Context, auth *cliproxyaut
 	})
 
 	httpClient := helps.NewProxyAwareHTTPClient(ctx, e.cfg, auth, 0)
-	httpClient = reporter.TrackHTTPClient(httpClient)
+	// Early role/empty frames are only first-packet fallbacks, not effective tokens.
+	httpClient = reporter.TrackHTTPClientRoundTripOnly(httpClient)
 	httpResp, errDo := httpClient.Do(httpReq)
 	if errDo != nil {
 		helps.RecordAPIResponseError(ctx, e.cfg, errDo)
@@ -244,6 +422,7 @@ func (e *CodeBuddyExecutor) ExecuteStream(ctx context.Context, auth *cliproxyaut
 		scanner.Buffer(nil, 52_428_800) // 50MB
 		claudeInputTokens := helps.NewClaudeInputTokenState(from, to, responseFormat, originalPayload)
 		var param any
+		helps.InitializeApplyPatchStream(ctx, to, responseFormat, req.Model, helps.ApplyPatchOriginalRequest(req, opts), translated, &param)
 		var streamUsage helps.StreamUsageBuffer
 		var seenDone bool
 		var streamFailed bool
@@ -299,8 +478,11 @@ func (e *CodeBuddyExecutor) ExecuteStream(ctx context.Context, auth *cliproxyaut
 					return true
 				}
 			}
+			// Observe complete upstream frames before translation or downstream backpressure.
+			helps.ObserveChatTokenEvent(reporter, dataPayload)
 			streamLine := append([]byte("data: "), dataPayload...)
-			chunks := helps.TranslateStreamWithClaudeInputTokens(ctx, to, responseFormat, req.Model, opts.OriginalRequest, translated, streamLine, &param, claudeInputTokens)
+			chunks := helps.TranslateStreamWithClaudeInputTokens(ctx, to, responseFormat, req.Model, helps.ApplyPatchOriginalRequest(req, opts), translated, streamLine, &param, claudeInputTokens)
+			helps.RecordApplyPatchStreamFailure(ctx, param, reporter, statusErr{code: http.StatusBadGateway, msg: helps.ApplyPatchUpstreamErrorMessage})
 			for i := range chunks {
 				select {
 				case out <- cliproxyexecutor.StreamChunk{Payload: chunks[i]}:
@@ -308,6 +490,10 @@ func (e *CodeBuddyExecutor) ExecuteStream(ctx context.Context, auth *cliproxyaut
 					streamAborted = true
 					return true
 				}
+			}
+			if helps.ApplyPatchTranslationError(param) != nil {
+				publishStreamError(statusErr{code: http.StatusBadGateway, msg: helps.ApplyPatchUpstreamErrorMessage}, false)
+				return true
 			}
 			if isDone {
 				seenDone = true
@@ -349,6 +535,25 @@ func (e *CodeBuddyExecutor) ExecuteStream(ctx context.Context, auth *cliproxyaut
 		if errScan == nil && !seenDone && !streamFailed && !streamAborted && len(frameData) > 0 {
 			_ = processFrame()
 		}
+		if !streamFailed && !streamAborted && helps.EndApplyPatchStream(ctx, param, reporter, out, statusErr{code: http.StatusBadGateway, msg: helps.ApplyPatchUpstreamErrorMessage}) {
+			return
+		}
+		if !streamFailed && !streamAborted && !seenDone && errScan == nil && responseFormat == sdktranslator.FormatOpenAIResponse && ctx.Err() == nil && helps.CanFinalizeResponseStream(param) {
+			finalChunks := helps.TranslateStreamWithClaudeInputTokens(ctx, to, responseFormat, req.Model, helps.ApplyPatchOriginalRequest(req, opts), translated, []byte("data: [DONE]"), &param, claudeInputTokens)
+			for _, finalChunk := range finalChunks {
+				select {
+				case out <- cliproxyexecutor.StreamChunk{Payload: finalChunk}:
+				case <-ctx.Done():
+					streamAborted = true
+				}
+				if streamAborted {
+					break
+				}
+			}
+			if len(finalChunks) > 0 && !streamAborted {
+				seenDone = true
+			}
+		}
 		if streamFailed || streamAborted {
 			return
 		}
@@ -372,7 +577,8 @@ func (e *CodeBuddyExecutor) ExecuteStream(ctx context.Context, auth *cliproxyaut
 				}
 				return
 			}
-			chunks := helps.TranslateStreamWithClaudeInputTokens(ctx, to, responseFormat, req.Model, opts.OriginalRequest, translated, []byte("data: [DONE]"), &param, claudeInputTokens)
+			chunks := helps.TranslateStreamWithClaudeInputTokens(ctx, to, responseFormat, req.Model, helps.ApplyPatchOriginalRequest(req, opts), translated, []byte("data: [DONE]"), &param, claudeInputTokens)
+			helps.RecordApplyPatchStreamFailure(ctx, param, reporter, statusErr{code: http.StatusBadGateway, msg: helps.ApplyPatchUpstreamErrorMessage})
 			for i := range chunks {
 				select {
 				case out <- cliproxyexecutor.StreamChunk{Payload: chunks[i]}:
@@ -387,9 +593,90 @@ func (e *CodeBuddyExecutor) ExecuteStream(ctx context.Context, auth *cliproxyaut
 	return &cliproxyexecutor.StreamResult{Headers: httpResp.Header.Clone(), Chunks: out}, nil
 }
 
-// CountTokens is intentionally unsupported; CodeBuddy has no dedicated token counting endpoint.
+// CountTokens counts tokens locally using the OpenAI-compatible tokenizer;
+// CodeBuddy has no dedicated token counting endpoint.
 func (e *CodeBuddyExecutor) CountTokens(ctx context.Context, auth *cliproxyauth.Auth, req cliproxyexecutor.Request, opts cliproxyexecutor.Options) (cliproxyexecutor.Response, error) {
-	return cliproxyexecutor.Response{}, fmt.Errorf("codebuddy executor: token counting is not supported")
+	baseModel := thinking.ParseSuffix(req.Model).ModelName
+
+	from := opts.SourceFormat
+	responseFormat := cliproxyexecutor.ResponseFormatOrSource(opts)
+	to := sdktranslator.FormatOpenAI
+	_, translated, updatesChanged, err := helps.TranslateRequestPairWithAPIKeyModelCompatibilityAndUpdateIntent(
+		ctx, opts.Headers, e.cfg, from, to, baseModel, req.Payload, req.Payload, false, false,
+	)
+	if err != nil {
+		return cliproxyexecutor.Response{}, err
+	}
+	originalTranslated := translated
+	if len(opts.OriginalRequest) > 0 {
+		originalTranslated, _, _, err = helps.TranslateRequestPairWithAPIKeyModelCompatibilityAndUpdateIntent(
+			ctx, opts.Headers, e.cfg, from, to, baseModel, opts.OriginalRequest, opts.OriginalRequest, false, false,
+		)
+		if err != nil {
+			return cliproxyexecutor.Response{}, err
+		}
+	}
+
+	translated, err = helps.ApplyRequestThinking(translated, req, opts, from.String(), to.String(), e.Identifier(), updatesChanged)
+	if err != nil {
+		return cliproxyexecutor.Response{}, err
+	}
+
+	translated = helps.NewPayloadFinalizer(e.cfg, e.Identifier(), baseModel, to.String(), "", originalTranslated, req, opts)(translated)
+	enc, err := helps.TokenizerForModel(baseModel)
+	if err != nil {
+		return cliproxyexecutor.Response{}, fmt.Errorf("codebuddy executor: tokenizer init failed: %w", err)
+	}
+
+	count, err := helps.CountOpenAIChatTokens(enc, translated)
+	if err != nil {
+		return cliproxyexecutor.Response{}, fmt.Errorf("codebuddy executor: token counting failed: %w", err)
+	}
+
+	usageJSON := helps.BuildOpenAIUsageJSON(count)
+	translatedUsage := sdktranslator.TranslateTokenCount(ctx, to, responseFormat, count, usageJSON)
+	return cliproxyexecutor.Response{Payload: translatedUsage}, nil
+}
+
+// SupportsApplyPatch reports the actual executor contract, independent of its provider name.
+func (e *CodeBuddyExecutor) SupportsApplyPatch() bool { return e != nil }
+
+// applyPromptCacheKey injects a prompt_cache_key for CodeBuddy upstream caching.
+// CodeBuddy natively supports prompt cache statistics in usage, so caching is
+// always enabled without an OpenAICompatibility gate.
+func (e *CodeBuddyExecutor) applyPromptCacheKey(ctx context.Context, from sdktranslator.Format, baseModel string, req cliproxyexecutor.Request, opts cliproxyexecutor.Options, translated []byte) ([]byte, error) {
+	for _, payload := range [][]byte{req.Payload, opts.OriginalRequest, translated} {
+		if promptCacheKey := strings.TrimSpace(gjson.GetBytes(payload, "prompt_cache_key").String()); promptCacheKey != "" {
+			return helps.SetStringIfDifferent(translated, "prompt_cache_key", promptCacheKey), nil
+		}
+	}
+
+	modelName := strings.TrimSpace(gjson.GetBytes(translated, "model").String())
+	if modelName == "" {
+		modelName = baseModel
+	}
+	if sourceFormatEqual(from, sdktranslator.FormatClaude) {
+		cached, ok, errCache := helps.ClaudeCodePromptCache(ctx, modelName, req.Payload, opts.Headers)
+		if errCache != nil {
+			return translated, errCache
+		}
+		if ok {
+			return helps.SetStringIfDifferent(translated, "prompt_cache_key", cached.ID), nil
+		}
+	}
+
+	sessionID := helps.ProviderSessionUUID(e.Identifier(), opts.Metadata, req.Metadata)
+	if sessionID == "" {
+		return translated, nil
+	}
+	identity := strings.Join([]string{
+		"cli-proxy-api:codebuddy:prompt-cache",
+		strings.ToLower(modelName),
+		strings.ToLower(strings.TrimSpace(from.String())),
+		sessionID,
+	}, "\x00")
+	promptCacheKey := uuid.NewSHA1(uuid.NameSpaceOID, []byte(identity)).String()
+	return helps.SetStringIfDifferent(translated, "prompt_cache_key", promptCacheKey), nil
 }
 
 // Refresh rotates CodeBuddy access credentials and updates the runtime auth metadata.
