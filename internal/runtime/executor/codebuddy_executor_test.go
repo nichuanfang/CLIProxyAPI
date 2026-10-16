@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	codebuddyauth "github.com/router-for-me/CLIProxyAPI/v8/internal/auth/codebuddy"
@@ -401,5 +402,110 @@ func TestCodeBuddyExecutorThinkingLevelsInjected(t *testing.T) {
 	}
 	if got := gjson.GetBytes(gotBody, "model").String(); got != "deepseek-v4.1-flash" {
 		t.Fatalf("model suffix not stripped: %q", got)
+	}
+}
+
+func TestCodeBuddyExecutorResponsesFallbackToolContract(t *testing.T) {
+	var bodies [][]byte
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		bodies = append(bodies, bytes.Clone(body))
+		w.Header().Set("Content-Type", "text/event-stream")
+		if len(bodies) == 1 {
+			_, _ = w.Write([]byte(`data: {"id":"chatcmpl-tool","object":"chat.completion.chunk","model":"glm5.3","choices":[{"index":0,"delta":{"role":"assistant","tool_calls":[{"index":0,"id":"call-1","type":"function","function":{"name":"get_weather","arguments":"{\"city\":\"Beijing\"}"}}]},"finish_reason":"tool_calls"}]}` + "\n\n"))
+		} else {
+			_, _ = w.Write([]byte(`data: {"id":"chatcmpl-final","object":"chat.completion.chunk","model":"glm5.3","choices":[{"index":0,"delta":{"role":"assistant","content":"ok"},"finish_reason":"stop"}],"usage":{"prompt_tokens":2,"completion_tokens":1,"total_tokens":3}}` + "\n\n"))
+		}
+		_, _ = w.Write([]byte("data: [DONE]\n\n"))
+	}))
+	defer server.Close()
+
+	executor := NewCodeBuddyExecutor(&config.Config{})
+	auth := &cliproxyauth.Auth{
+		Attributes: map[string]string{"base_url": server.URL},
+		Metadata:   map[string]any{"access_token": "token"},
+	}
+	responsesPayload := []byte(`{"model":"glm5.3","stream":true,"input":[{"type":"message","id":"msg-1","role":"user","content":[{"type":"input_text","text":"weather"}]}],"tools":[{"type":"function","name":"get_weather","description":"Get weather","parameters":{"type":"object","properties":{"city":{"type":"string"}},"required":["city"]}}]}`)
+	opts := cliproxyexecutor.Options{SourceFormat: sdktranslator.FormatOpenAIResponse, Stream: true, OriginalRequest: responsesPayload}
+	first, err := executor.ExecuteStream(context.Background(), auth, cliproxyexecutor.Request{Model: "glm5.3", Payload: responsesPayload}, opts)
+	if err != nil {
+		t.Fatalf("first ExecuteStream() error = %v", err)
+	}
+	var firstOut []byte
+	for chunk := range first.Chunks {
+		if chunk.Err != nil {
+			t.Fatalf("first stream chunk error = %v", chunk.Err)
+		}
+		firstOut = append(firstOut, chunk.Payload...)
+	}
+	if !bytes.Contains(firstOut, []byte(`"type":"function_call"`)) {
+		t.Fatalf("first stream payload missing function_call: %s", firstOut)
+	}
+
+	toolPayload := []byte(`{"model":"glm5.3","stream":true,"input":[{"type":"message","id":"msg-1","role":"user","content":[{"type":"input_text","text":"weather"}]},{"type":"function_call","id":"fc-1","call_id":"call-1","name":"get_weather","arguments":"{\"city\":\"Beijing\"}"},{"type":"function_call_output","id":"out-1","call_id":"call-1","output":"Sunny, 31C"}],"tools":[{"type":"function","name":"get_weather","description":"Get weather","parameters":{"type":"object","properties":{"city":{"type":"string"}},"required":["city"]}}]}`)
+	second, err := executor.ExecuteStream(context.Background(), auth, cliproxyexecutor.Request{Model: "glm5.3", Payload: toolPayload}, cliproxyexecutor.Options{SourceFormat: sdktranslator.FormatOpenAIResponse, Stream: true, OriginalRequest: toolPayload})
+	if err != nil {
+		t.Fatalf("second ExecuteStream() error = %v", err)
+	}
+	for chunk := range second.Chunks {
+		if chunk.Err != nil {
+			t.Fatalf("second stream chunk error = %v", chunk.Err)
+		}
+	}
+	if len(bodies) != 2 {
+		t.Fatalf("upstream request count = %d, want 2", len(bodies))
+	}
+	if got := gjson.GetBytes(bodies[0], "tools.0.function.name").String(); got != "get_weather" {
+		t.Fatalf("tool declaration = %q, body=%s", got, bodies[0])
+	}
+	if got := gjson.GetBytes(bodies[1], "messages.#(role==\"assistant\").tool_calls.0.function.name").String(); got != "get_weather" {
+		t.Fatalf("assistant tool call missing: %s", bodies[1])
+	}
+	if got := gjson.GetBytes(bodies[1], "messages.#(role==\"tool\").tool_call_id").String(); got != "call-1" {
+		t.Fatalf("tool call id = %q, want call-1: %s", got, bodies[1])
+	}
+	if got := gjson.GetBytes(bodies[1], "messages.#(role==\"tool\").content").String(); got != "Sunny, 31C" {
+		t.Fatalf("tool output = %q, body=%s", got, bodies[1])
+	}
+}
+
+func TestCodeBuddyExecutorStreamExposesUpstreamStatus(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		_, _ = w.Write([]byte(`{"error":{"message":"invalid image","type":"invalid_request_error","code":"bad_image"}}`))
+	}))
+	defer server.Close()
+
+	executor := NewCodeBuddyExecutor(&config.Config{})
+	auth := &cliproxyauth.Auth{
+		Attributes: map[string]string{"base_url": server.URL},
+		Metadata:   map[string]any{"access_token": "token"},
+	}
+	result, streamStartErr := executor.ExecuteStream(context.Background(), auth, cliproxyexecutor.Request{
+		Model:   "glm5.3",
+		Payload: []byte(`{"model":"glm5.3","messages":[{"role":"user","content":"hi"}],"stream":true}`),
+	}, cliproxyexecutor.Options{SourceFormat: sdktranslator.FormatOpenAI, Stream: true})
+	if streamStartErr == nil {
+		for chunk := range result.Chunks {
+			if chunk.Err != nil {
+				streamStartErr = chunk.Err
+				break
+			}
+		}
+	}
+	if streamStartErr == nil {
+		t.Fatal("ExecuteStream() = nil error, want upstream status error")
+	}
+	streamErr := streamStartErr
+	statusErr, ok := streamErr.(statusErr)
+	if !ok {
+		t.Fatalf("stream error type = %T, want statusErr: %v", streamErr, streamErr)
+	}
+	if statusErr.code != http.StatusBadRequest {
+		t.Fatalf("stream error status = %d, want %d", statusErr.code, http.StatusBadRequest)
+	}
+	if !strings.Contains(statusErr.msg, "invalid image") || !strings.Contains(statusErr.msg, "bad_image") {
+		t.Fatalf("stream error lost upstream detail: %q", statusErr.msg)
 	}
 }
