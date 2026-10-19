@@ -5,6 +5,7 @@ import os
 import socketserver
 import sys
 import threading
+import time
 import urllib.parse
 import webbrowser
 from typing import Any, Dict
@@ -400,6 +401,7 @@ input[type="text"]:focus, input[type="number"]:focus, select:focus, textarea:foc
   <div class="header-actions">
     <button class="btn sm" onclick="loadAllData()">刷新数据</button>
     <button class="btn sm primary" onclick="openAddModelModal()">+ 手动添加模型</button>
+    <button class="btn sm danger" onclick="shutdownServer()" title="终止后台服务进程并关闭">终止进程</button>
   </div>
 </header>
 
@@ -438,24 +440,23 @@ input[type="text"]:focus, input[type="number"]:focus, select:focus, textarea:foc
     <div class="toolbar">
       <input type="text" class="search-input" id="configured-search" aria-label="搜索模型 slug 或名称" placeholder="搜索模型 slug 或名称…" oninput="renderConfiguredTable()">
       <div style="color: var(--text-muted); font-size: 11px;">
-        提示: 支持直接鼠标拖拽表格行排序，或点击 ▲/▼/置顶/置底快捷按钮调整顺序与优先级
+        提示: 支持直接鼠标按住左侧 ☰ 拖拽表格行排序
       </div>
     </div>
     <table class="models-table">
       <thead>
         <tr>
           <th style="width: 50px; text-align: center;">拖拽</th>
-          <th style="width: 70px;">序号 / 优先级</th>
           <th style="width: 220px;">模型标识 (Slug)</th>
           <th style="width: 180px;">显示名称</th>
           <th>思考/推理 (Reasoning)</th>
           <th style="width: 120px;">终端执行器</th>
           <th style="width: 80px;">可见性</th>
-          <th style="width: 230px; text-align: right;">排序与操作</th>
+          <th style="width: 110px; text-align: right;">操作</th>
         </tr>
       </thead>
       <tbody id="configured-tbody">
-        <tr><td colspan="8" style="text-align: center; color: var(--text-muted);">正在加载...</td></tr>
+        <tr><td colspan="7" style="text-align: center; color: var(--text-muted);">正在加载...</td></tr>
       </tbody>
     </table>
   </div>
@@ -732,7 +733,7 @@ function renderConfiguredTable() {
   });
 
   if (models.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="8" style="text-align: center; color: var(--text-muted); padding: 24px;">暂无匹配的配置模型</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="7" style="text-align: center; color: var(--text-muted); padding: 24px;">暂无匹配的配置模型</td></tr>';
     return;
   }
 
@@ -753,7 +754,6 @@ function renderConfiguredTable() {
 
     tr.innerHTML = `
       <td style="text-align: center; cursor: grab; user-select: none; color: var(--text-muted); font-size: 14px;" title="按住拖拽排序">☰</td>
-      <td><span class="badge">#${idx + 1} (${m.priority || 1000})</span></td>
       <td>
         <div class="model-slug">${escapeHtml(m.slug)}</div>
         <div class="model-desc">${escapeHtml(m.description || '')}</div>
@@ -765,10 +765,6 @@ function renderConfiguredTable() {
       <td><span class="tag shell">${escapeHtml(shell)}</span></td>
       <td><span class="tag">${escapeHtml(vis)}</span></td>
       <td style="text-align: right; white-space: nowrap;">
-        <button class="btn sm" onclick="moveModel('${m.slug}', 'top')" title="置顶" aria-label="置顶 ${escapeHtml(m.slug)}">🔝</button>
-        <button class="btn sm" onclick="moveModel('${m.slug}', 'up')" title="上移" aria-label="上移 ${escapeHtml(m.slug)}">▲</button>
-        <button class="btn sm" onclick="moveModel('${m.slug}', 'down')" title="下移" aria-label="下移 ${escapeHtml(m.slug)}">▼</button>
-        <button class="btn sm" onclick="moveModel('${m.slug}', 'bottom')" title="置底" aria-label="置底 ${escapeHtml(m.slug)}">🔚</button>
         <button class="btn sm blue" onclick="openEditModelModal('${m.slug}')">编辑</button>
         <button class="btn sm danger" onclick="confirmDeleteModel('${m.slug}')">删除</button>
       </td>
@@ -840,6 +836,30 @@ async function moveModel(slug, direction) {
     loadAllData();
   } catch (err) {
     showToast('移动失败: ' + err.message, 'error');
+  }
+}
+
+async function shutdownServer() {
+  if (!confirm('确定要终止 Codex 模型管理器后台进程吗？\n终止后该服务将停止运行，需要重新通过技能或脚本启动。')) {
+    return;
+  }
+  try {
+    const res = await fetch('/api/shutdown', { method: 'POST' });
+    const data = await res.json();
+    showToast('服务已终止，进程正在退出...', 'success');
+    document.body.innerHTML = `
+      <div style="min-height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; background: var(--bg); color: var(--text); font-family: inherit; padding: 24px; text-align: center;">
+        <div style="width: 56px; height: 56px; border-radius: 50%; background: rgba(248, 81, 73, 0.15); color: var(--danger); display: flex; align-items: center; justify-content: center; font-size: 28px; margin-bottom: 20px;">
+          ✕
+        </div>
+        <h2 style="font-size: 20px; font-weight: 600; margin-bottom: 12px; color: var(--text);">Web 编辑器服务已终止</h2>
+        <p style="color: var(--text-muted); font-size: 14px; max-width: 440px; line-height: 1.6; margin-bottom: 24px;">
+          后台进程已安全退出，端口已释放。您可以安全关闭此浏览器标签页。如需再次使用，请在技能中唤起或执行启动脚本。
+        </p>
+      </div>
+    `;
+  } catch (err) {
+    showToast('终止请求发送失败: ' + err.message, 'error');
   }
 }
 
@@ -1232,16 +1252,23 @@ loadAllData();
 
 HTML_PATH = os.path.join(os.path.dirname(__file__), "web_editor.html")
 _CACHED_HTML_TEMPLATE = None
+_LAST_HTML_MTIME = 0
 
 
 def get_html_bytes(catalog_data: Dict[str, Any], catalog_path: str = None) -> bytes:
-    global _CACHED_HTML_TEMPLATE
-    if _CACHED_HTML_TEMPLATE is None:
-        if os.path.exists(HTML_PATH):
-            with open(HTML_PATH, "r", encoding="utf-8") as f:
-                _CACHED_HTML_TEMPLATE = f.read()
-        else:
-            _CACHED_HTML_TEMPLATE = HTML_TEMPLATE
+    global _CACHED_HTML_TEMPLATE, _LAST_HTML_MTIME
+    if os.path.exists(HTML_PATH):
+        try:
+            mtime = os.path.getmtime(HTML_PATH)
+            if _CACHED_HTML_TEMPLATE is None or mtime != _LAST_HTML_MTIME:
+                with open(HTML_PATH, "r", encoding="utf-8") as f:
+                    _CACHED_HTML_TEMPLATE = f.read()
+                _LAST_HTML_MTIME = mtime
+        except Exception:
+            if _CACHED_HTML_TEMPLATE is None:
+                _CACHED_HTML_TEMPLATE = HTML_TEMPLATE
+    elif _CACHED_HTML_TEMPLATE is None:
+        _CACHED_HTML_TEMPLATE = HTML_TEMPLATE
 
     cat_json = json.dumps(catalog_data, ensure_ascii=False, separators=(",", ":"))
     up_cache = core.load_upstream_cache(catalog_path)
@@ -1388,6 +1415,15 @@ class CatalogRequestHandler(http.server.BaseHTTPRequestHandler):
                 self.send_json(200, {"success": True, "new_index": new_idx, "path": saved})
             except Exception as e:
                 self.send_json(400, {"error": str(e)})
+            return
+
+        if path == "/api/shutdown":
+            def delayed_shutdown():
+                time.sleep(0.3)
+                os._exit(0)
+
+            threading.Thread(target=delayed_shutdown, daemon=True).start()
+            self.send_json(200, {"success": True, "message": "Server is shutting down..."})
             return
 
         if path == "/api/catalog/raw-save":

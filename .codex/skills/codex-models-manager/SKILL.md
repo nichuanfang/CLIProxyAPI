@@ -52,12 +52,13 @@ powershell -File D:\workspace\CLIProxyAPI\.codex\skills\codex-models-manager\scr
 
 Features in the Web Editor:
 1. **Configured Models Tab**:
-   - **Drag-and-Drop Sorting**: Directly drag table rows to reorder models.
-   - **Quick Action Buttons**: One-click to Top (🔝), Up (▲), Down (▼), or Bottom (🔚).
+   - **Drag-and-Drop Sorting**: Directly drag table rows via the handle (☰) to reorder models easily.
+   - **Clean Actions**: Focused row actions for "编辑" (edit) and "删除" (delete) with automatic safety backups.
    - Search, edit parameters, and remove models with backup.
 2. **Upstream Discovery Tab**: Input endpoint (default `http://127.0.0.1:8317/v1/models`) and API Key to compare models. Click `+ 开启到 Codex` to instantly clone from template and enable.
 3. **Raw JSON Tab**: Directly view and edit the entire `default.json` with format validation.
 4. **Backups Tab**: View backup history and roll back with one click.
+5. **Process Lifecycle**: One-click "终止进程" in the header to safely shut down the background server and release the port.
 
 ## CLI Commands
 
