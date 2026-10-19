@@ -1,0 +1,7 @@
+interface:
+  display_name: "Codex Models Manager"
+  short_description: "Manage Codex models with visual web editor and /v1/models sync"
+  default_prompt: "打开 Codex 模型可视化编辑器，或者查看当前配置的模型列表"
+
+policy:
+  allow_implicit_invocation: false
