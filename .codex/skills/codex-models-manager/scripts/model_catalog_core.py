@@ -2,6 +2,7 @@ import copy
 import datetime
 import json
 import os
+import re
 import shutil
 import urllib.error
 import urllib.request
@@ -9,6 +10,8 @@ from typing import Any, Dict, List, Optional, Tuple
 
 DEFAULT_CATALOG_PATH = os.path.expanduser(r"~\.codex\model-catalogs\default.json")
 DEFAULT_BACKUP_DIR = os.path.expanduser(r"~\.codex\model-catalogs\backups")
+DEFAULT_CODEX_CONFIG_PATH = os.path.expanduser(r"~\.codex\config.toml")
+DEFAULT_TEMPLATE_PATH = os.path.join(os.path.dirname(__file__), "default_catalog_template.json")
 DEFAULT_UPSTREAM_URL = "http://127.0.0.1:8317/v1/models"
 DEFAULT_API_KEY = "sk-U6cnDx0z3xtOGLoZXSGo"
 
@@ -24,10 +27,118 @@ def get_backup_dir(path: Optional[str] = None) -> str:
     return os.path.join(os.path.dirname(catalog_path), "backups")
 
 
+def get_upstream_cache_path(catalog_path: Optional[str] = None) -> str:
+    cat_dir = os.path.dirname(get_catalog_path(catalog_path))
+    return os.path.join(cat_dir, "upstream_cache.json")
+
+
+def load_upstream_cache(catalog_path: Optional[str] = None) -> Optional[Dict[str, Any]]:
+    cache_file = get_upstream_cache_path(catalog_path)
+    if os.path.exists(cache_file):
+        try:
+            with open(cache_file, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception:
+            return None
+    return None
+
+
+def save_upstream_cache(data: Dict[str, Any], catalog_path: Optional[str] = None) -> None:
+    cache_file = get_upstream_cache_path(catalog_path)
+    try:
+        os.makedirs(os.path.dirname(cache_file), exist_ok=True)
+        with open(cache_file, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+    except Exception:
+        pass
+
+
+def ensure_codex_initialized(
+    catalog_path: Optional[str] = None,
+    config_path: Optional[str] = None
+) -> Dict[str, Any]:
+    """
+    Ensure Codex default.json model catalog and config.toml exist and are properly linked.
+    If default.json is missing, create it from template.
+    If config.toml is missing or lacks model_catalog_json, configure it.
+    """
+    cat_path = get_catalog_path(catalog_path)
+    cfg_path = os.path.abspath(config_path or DEFAULT_CODEX_CONFIG_PATH)
+
+    result = {
+        "catalog_path": cat_path,
+        "config_path": cfg_path,
+        "catalog_initialized": False,
+        "config_initialized": False
+    }
+
+    # 1. Ensure default.json exists
+    if not os.path.exists(cat_path):
+        os.makedirs(os.path.dirname(cat_path), exist_ok=True)
+        if os.path.exists(DEFAULT_TEMPLATE_PATH):
+            shutil.copy2(DEFAULT_TEMPLATE_PATH, cat_path)
+        else:
+            starter = {
+                "models": [
+                    {
+                        "slug": "deepseek-v4.1-flash",
+                        "display_name": "DeepSeek-V4.1-Flash",
+                        "description": "Native multimodal frontier agentic coding model with asymmetric CED architecture.",
+                        "default_reasoning_level": "high",
+                        "supported_reasoning_levels": [
+                            {"effort": "high", "description": "Greater reasoning depth"},
+                            {"effort": "max", "description": "Maximum reasoning depth"}
+                        ],
+                        "shell_type": "shell_command",
+                        "visibility": "list",
+                        "supported_in_api": True,
+                        "priority": 1000
+                    }
+                ]
+            }
+            with open(cat_path, "w", encoding="utf-8") as f:
+                json.dump(starter, f, ensure_ascii=False, indent=2)
+                f.write("\n")
+        result["catalog_initialized"] = True
+
+    # 2. Ensure config.toml points to model_catalog_json = "model-catalogs/default.json"
+    os.makedirs(os.path.dirname(cfg_path), exist_ok=True)
+    setting_line = 'model_catalog_json = "model-catalogs/default.json"'
+
+    if not os.path.exists(cfg_path):
+        with open(cfg_path, "w", encoding="utf-8") as f:
+            f.write(f'{setting_line}\n')
+        result["config_initialized"] = True
+    else:
+        with open(cfg_path, "r", encoding="utf-8") as f:
+            content = f.read()
+
+        # Check if model_catalog_json is already set
+        if not re.search(r'^\s*model_catalog_json\s*=', content, re.MULTILINE):
+            lines = content.splitlines(keepends=True)
+            # Find insertion point before first section header '[...]'
+            insert_idx = 0
+            for idx, line in enumerate(lines):
+                if line.strip().startswith('['):
+                    insert_idx = idx
+                    break
+            else:
+                insert_idx = len(lines)
+
+            lines.insert(insert_idx, f'{setting_line}\n')
+            with open(cfg_path, "w", encoding="utf-8") as f:
+                f.writelines(lines)
+            result["config_initialized"] = True
+
+    return result
+
+
 def load_catalog(path: Optional[str] = None) -> Dict[str, Any]:
     p = get_catalog_path(path)
     if not os.path.exists(p):
-        raise FileNotFoundError(f"Catalog file not found: {p}")
+        ensure_codex_initialized(catalog_path=p)
+    if not os.path.exists(p):
+        raise FileNotFoundError(f"Catalog file not found and could not be initialized: {p}")
     with open(p, "r", encoding="utf-8") as f:
         data = json.load(f)
     if not isinstance(data, dict) or "models" not in data or not isinstance(data["models"], list):
@@ -130,12 +241,16 @@ def fetch_upstream_models(url: str = DEFAULT_UPSTREAM_URL, api_key: str = DEFAUL
         with urllib.request.urlopen(req, timeout=timeout) as response:
             content = response.read().decode("utf-8")
             parsed = json.loads(content)
+            data_list = []
             if isinstance(parsed, dict) and "data" in parsed and isinstance(parsed["data"], list):
-                return parsed["data"]
+                data_list = parsed["data"]
             elif isinstance(parsed, list):
-                return parsed
+                data_list = parsed
             else:
                 raise ValueError("Unexpected response format from /v1/models: missing 'data' array")
+            # Save cache for instant offline or next-launch display
+            save_upstream_cache({"upstream_models": data_list, "timestamp": datetime.datetime.now().isoformat()})
+            return data_list
     except urllib.error.HTTPError as e:
         err_body = e.read().decode("utf-8", errors="ignore")
         raise RuntimeError(f"HTTP error {e.code} fetching {req_url}: {e.reason} - {err_body}")

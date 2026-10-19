@@ -4,12 +4,11 @@ param (
 )
 
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
-$Script = Join-Path $ScriptDir "web_editor.py"
+$Script = Join-Path $ScriptDir "launch.py"
 
 $ArgsList = @($Script, "--port", $Port)
 if ($NoBrowser) {
     $ArgsList += "--no-browser"
 }
 
-Write-Host "[Codex Model Catalog] Starting Visual Web Editor on port $Port..." -ForegroundColor Cyan
 python @ArgsList

@@ -10,10 +10,23 @@ metadata:
 Manage and maintain the model catalog for the Codex desktop application, stored at:
 `C:\Users\R00021355\.codex\model-catalogs\default.json`
 
-## When to Launch Visual Web Editor
+## Default Action & Invocation Rules
 
-- **Launch Web Editor**: When the user explicitly asks to "open the editor", "launch visual interface", "可视化编辑", or interactively browse/configure models in the browser. In such cases, start the web server in the background and share the local URL (`http://127.0.0.1:8388`).
-- **Direct CLI / Silent Execution**: When the user asks concrete operational tasks (e.g. "列出模型", "帮我添加 gemini-3-flash", "把 deepseek 移到最前面", "删除某个模型"), use `catalog_cli.py` or the Python module directly to execute the change swiftly without popping up a browser.
+1. **Default Action (No Arguments / No Description)**:
+   When the user invokes `$codex-models-manager` directly **without specific arguments or description**, or requests "启用可视化界面", "打开可视化界面", "打开编辑器":
+   **Execute the fast one-step launcher immediately in a single command:**
+   ```powershell
+   python D:\workspace\CLIProxyAPI\.codex\skills\codex-models-manager\scripts\launch.py
+   ```
+   The launcher completes in <0.5s, auto-initializes configuration if needed, opens the browser, and prints the URL. Return the URL (`http://127.0.0.1:8388`) and ready status to the user in 1 sentence. Do NOT run exploratory tool calls or list models in terminal.
+
+2. **Automatic Codex Configuration Initialization**:
+   The manager automatically verifies:
+   - Catalog JSON: `C:\Users\R00021355\.codex\model-catalogs\default.json` (auto-creates from template if missing).
+   - Codex Config: `C:\Users\R00021355\.codex\config.toml` (auto-injects `model_catalog_json = "model-catalogs/default.json"` if missing).
+
+3. **Direct CLI / Silent Execution**:
+   When the user asks concrete non-visual operational tasks (e.g. "列出模型", "帮我添加 gemini-3-flash", "把 deepseek 移到最前面", "删除某个模型"), use `catalog_cli.py` directly to execute the change swiftly without launching a browser.
 
 ## Capabilities
 
@@ -22,16 +35,16 @@ Manage and maintain the model catalog for the Codex desktop application, stored 
 - **Update Models**: Adjust `display_name`, `description`, `priority`, `default_reasoning_level`, `supported_reasoning_levels`, `shell_type`, `visibility`, context windows, and output limits.
 - **Reorder & Adjust Priority**: Reorder models via drag-and-drop in the Web UI, or with CLI commands (`--up`, `--down`, `--top`, `--bottom`, `--to <idx>`, `reorder`). Automatically maintains consistent array order and priority values.
 - **Remove Models**: Delete unneeded models cleanly.
-- **Visual Web Editor**: Launch an embedded, zero-dependency browser-based GUI for visual model management, template cloning, live diffing, drag/reorder, and raw JSON editing.
+- **Visual Web Editor & Instant Rendering**: Dedicated static HTML (`web_editor.html`) with pre-injected data on page delivery for 0ms instant rendering, plus background asynchronous sync.
 - **Automatic Safety Backups**: Every add, edit, delete, or save operation automatically generates a timestamped backup in `C:\Users\R00021355\.codex\model-catalogs\backups\`, with one-click restoration.
 
 ## Visual Web Editor
 
-To launch the visual editing web application in the browser:
+To launch the visual editing web application in the browser instantly:
 
 ```powershell
-# Default port: 8388 (auto-opens default browser)
-python D:\workspace\CLIProxyAPI\.codex\skills\codex-models-manager\scripts\web_editor.py
+# Fast one-step launcher (auto-checks config, reuses active server, opens browser in <0.5s)
+python D:\workspace\CLIProxyAPI\.codex\skills\codex-models-manager\scripts\launch.py
 
 # Or run the wrapper script
 powershell -File D:\workspace\CLIProxyAPI\.codex\skills\codex-models-manager\scripts\start_web_editor.ps1

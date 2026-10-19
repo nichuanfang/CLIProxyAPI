@@ -16,9 +16,12 @@ HTML_TEMPLATE = r'''<!DOCTYPE html>
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark">
 <title>Codex 模型配置管理器 (Visual Catalog Manager)</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%2358a6ff'><circle cx='12' cy='12' r='10'/></svg>">
 <style>
 :root {
+  color-scheme: dark;
   --bg: #0d1117;
   --surface: #161b22;
   --surface-hover: #1c2128;
@@ -79,6 +82,7 @@ header {
   padding: 2px 8px;
   border-radius: 12px;
   font-size: 11px;
+  font-variant-numeric: tabular-nums;
 }
 .badge.success { border-color: rgba(46,160,67,0.4); color: #3fb950; }
 .badge.info { border-color: rgba(56,139,253,0.4); color: #58a6ff; }
@@ -98,9 +102,13 @@ header {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  transition: all 0.15s ease;
+  transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease;
 }
 .btn:hover { background: var(--surface-hover); border-color: #8b949e; }
+.btn:focus-visible, .tab-btn:focus-visible {
+  outline: 2px solid var(--border-active);
+  outline-offset: 1px;
+}
 .btn.primary { background: var(--primary); border-color: rgba(240,246,252,0.1); color: #fff; }
 .btn.primary:hover { background: var(--primary-hover); }
 .btn.blue { background: var(--blue); border-color: rgba(240,246,252,0.1); color: #fff; }
@@ -144,10 +152,13 @@ input[type="text"], input[type="number"], select, textarea {
   font-size: 12px;
   font-family: inherit;
 }
-input[type="text"]:focus, select:focus, textarea:focus {
+input[type="text"]:focus-visible, input[type="number"]:focus-visible, select:focus-visible, textarea:focus-visible {
+  outline: 2px solid var(--border-active);
+  outline-offset: 1px;
+}
+input[type="text"]:focus, input[type="number"]:focus, select:focus, textarea:focus {
   outline: none;
   border-color: var(--border-active);
-  box-shadow: 0 0 0 2px rgba(88,166,255,0.2);
 }
 .nav-tabs {
   display: flex;
@@ -269,6 +280,7 @@ input[type="text"]:focus, select:focus, textarea:focus {
   display: flex;
   flex-direction: column;
   box-shadow: 0 16px 32px rgba(0,0,0,0.5);
+  overscroll-behavior: contain;
 }
 .modal-header {
   padding: 14px 20px;
@@ -294,6 +306,7 @@ input[type="text"]:focus, select:focus, textarea:focus {
   padding: 16px 20px;
   overflow-y: auto;
   flex: 1;
+  overscroll-behavior: contain;
 }
 .modal-footer {
   padding: 12px 20px;
@@ -343,7 +356,7 @@ input[type="text"]:focus, select:focus, textarea:focus {
   box-shadow: 0 8px 16px rgba(0,0,0,0.4);
   opacity: 0;
   transform: translateY(10px);
-  transition: all 0.25s ease;
+  transition: opacity 0.25s ease, transform 0.25s ease;
   z-index: 2000;
 }
 #toast.show {
@@ -365,6 +378,12 @@ input[type="text"]:focus, select:focus, textarea:focus {
   border-radius: var(--radius);
   resize: vertical;
 }
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+  }
+}
 </style>
 </head>
 <body>
@@ -373,7 +392,7 @@ input[type="text"]:focus, select:focus, textarea:focus {
   <div class="header-title">
     <h1>Codex 模型配置管理器</h1>
     <div class="header-badges">
-      <span class="badge" id="catalog-path-badge">Catalog: 加载中...</span>
+      <span class="badge" id="catalog-path-badge">Catalog: 加载中…</span>
       <span class="badge success" id="configured-count-badge">已启用: 0</span>
       <span class="badge info" id="upstream-count-badge">上游可用: 0</span>
     </div>
@@ -392,32 +411,32 @@ input[type="text"]:focus, select:focus, textarea:focus {
       <input type="text" id="upstream-url" value="http://127.0.0.1:8317/v1/models" style="flex: 1;" placeholder="http://127.0.0.1:8317/v1/models">
     </div>
     <div class="form-group-inline" style="flex: 1.5; min-width: 220px;">
-      <label>API Key:</label>
-      <input type="text" id="upstream-key" value="sk-U6cnDx0z3xtOGLoZXSGo" style="flex: 1;" placeholder="sk-...">
+      <label for="upstream-key">API Key:</label>
+      <input type="text" id="upstream-key" value="sk-U6cnDx0z3xtOGLoZXSGo" style="flex: 1;" placeholder="sk-…">
     </div>
     <button class="btn blue" onclick="fetchUpstream()">拉取可用模型源</button>
   </div>
 
   <!-- 选项卡 -->
-  <div class="nav-tabs">
-    <button class="tab-btn active" onclick="switchTab('configured')">
+  <div class="nav-tabs" role="tablist">
+    <button class="tab-btn active" role="tab" aria-selected="true" data-tab="configured" onclick="switchTab('configured', this)">
       已启用模型列表 (<span id="tab-configured-num">0</span>)
     </button>
-    <button class="tab-btn" onclick="switchTab('upstream')">
+    <button class="tab-btn" role="tab" aria-selected="false" data-tab="upstream" onclick="switchTab('upstream', this)">
       上游模型比对与开启 (<span id="tab-upstream-num">0</span>)
     </button>
-    <button class="tab-btn" onclick="switchTab('raw')">
+    <button class="tab-btn" role="tab" aria-selected="false" data-tab="raw" onclick="switchTab('raw', this)">
       原始 JSON 编辑
     </button>
-    <button class="tab-btn" onclick="switchTab('backups')">
+    <button class="tab-btn" role="tab" aria-selected="false" data-tab="backups" onclick="switchTab('backups', this)">
       备份与恢复 (<span id="tab-backups-num">0</span>)
     </button>
   </div>
 
   <!-- Tab 1: 已配置模型 -->
-  <div id="tab-configured" class="tab-content">
+  <div id="tab-configured" class="tab-content" role="tabpanel">
     <div class="toolbar">
-      <input type="text" class="search-input" id="configured-search" placeholder="搜索模型 slug 或名称..." oninput="renderConfiguredTable()">
+      <input type="text" class="search-input" id="configured-search" aria-label="搜索模型 slug 或名称" placeholder="搜索模型 slug 或名称…" oninput="renderConfiguredTable()">
       <div style="color: var(--text-muted); font-size: 11px;">
         提示: 支持直接鼠标拖拽表格行排序，或点击 ▲/▼/置顶/置底快捷按钮调整顺序与优先级
       </div>
@@ -442,9 +461,9 @@ input[type="text"]:focus, select:focus, textarea:focus {
   </div>
 
   <!-- Tab 2: 上游模型比对 -->
-  <div id="tab-upstream" class="tab-content" style="display: none;">
+  <div id="tab-upstream" class="tab-content" role="tabpanel" style="display: none;">
     <div class="toolbar">
-      <input type="text" class="search-input" id="upstream-search" placeholder="筛选上游模型..." oninput="renderUpstreamTable()">
+      <input type="text" class="search-input" id="upstream-search" aria-label="筛选上游模型" placeholder="筛选上游模型…" oninput="renderUpstreamTable()">
       <span style="color: var(--text-muted); font-size: 12px;">直接点击“开启到 Codex”即可快速根据模板加入目录</span>
     </div>
     <table class="models-table">
@@ -464,7 +483,7 @@ input[type="text"]:focus, select:focus, textarea:focus {
   </div>
 
   <!-- Tab 3: 原始 JSON 编辑 -->
-  <div id="tab-raw" class="tab-content" style="display: none;">
+  <div id="tab-raw" class="tab-content" role="tabpanel" style="display: none;">
     <div class="toolbar">
       <span style="color: var(--text-muted); font-size: 12px;">直接修改 default.json 完整内容。保存前会自动创建完整安全备份。</span>
       <div>
@@ -476,7 +495,7 @@ input[type="text"]:focus, select:focus, textarea:focus {
   </div>
 
   <!-- Tab 4: 备份管理 -->
-  <div id="tab-backups" class="tab-content" style="display: none;">
+  <div id="tab-backups" class="tab-content" role="tabpanel" style="display: none;">
     <div class="toolbar">
       <span style="color: var(--text-muted); font-size: 12px;">每次添加、更新、删除或保存操作都会自动生成一份时间戳备份。</span>
       <button class="btn sm blue" onclick="createManualBackup()">+ 手动立即备份</button>
@@ -498,11 +517,11 @@ input[type="text"]:focus, select:focus, textarea:focus {
 </div>
 
 <!-- 编辑模型 Modal -->
-<div class="modal-backdrop" id="edit-modal">
+<div class="modal-backdrop" id="edit-modal" onclick="handleBackdropClick(event)">
   <div class="modal">
     <div class="modal-header">
       <h2 id="modal-title">编辑模型配置</h2>
-      <button class="modal-close" onclick="closeEditModal()">&times;</button>
+      <button class="modal-close" onclick="closeEditModal()" aria-label="关闭">&times;</button>
     </div>
     <div class="modal-body">
       <input type="hidden" id="edit-orig-slug">
@@ -607,7 +626,7 @@ input[type="text"]:focus, select:focus, textarea:focus {
   </div>
 </div>
 
-<div id="toast"></div>
+<div id="toast" role="status" aria-live="polite"></div>
 
 <script>
 let state = {
@@ -625,11 +644,19 @@ function showToast(msg, type = 'info') {
   setTimeout(() => { toast.className = ''; }, 3000);
 }
 
-function switchTab(name) {
-  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+function switchTab(name, btn) {
+  document.querySelectorAll('.tab-btn').forEach(b => {
+    b.classList.remove('active');
+    b.setAttribute('aria-selected', 'false');
+  });
   document.querySelectorAll('.tab-content').forEach(c => c.style.display = 'none');
-  event.currentTarget.classList.add('active');
-  document.getElementById('tab-' + name).style.display = 'block';
+  const targetBtn = btn || (typeof event !== 'undefined' && event ? event.currentTarget : null) || document.querySelector(`.tab-btn[data-tab="${name}"]`);
+  if (targetBtn) {
+    targetBtn.classList.add('active');
+    targetBtn.setAttribute('aria-selected', 'true');
+  }
+  const panel = document.getElementById('tab-' + name);
+  if (panel) panel.style.display = 'block';
   if (name === 'raw') {
     document.getElementById('raw-json-text').value = JSON.stringify(state.catalog, null, 2);
   } else if (name === 'backups') {
@@ -738,10 +765,10 @@ function renderConfiguredTable() {
       <td><span class="tag shell">${escapeHtml(shell)}</span></td>
       <td><span class="tag">${escapeHtml(vis)}</span></td>
       <td style="text-align: right; white-space: nowrap;">
-        <button class="btn sm" onclick="moveModel('${m.slug}', 'top')" title="置顶">🔝</button>
-        <button class="btn sm" onclick="moveModel('${m.slug}', 'up')" title="上移">▲</button>
-        <button class="btn sm" onclick="moveModel('${m.slug}', 'down')" title="下移">▼</button>
-        <button class="btn sm" onclick="moveModel('${m.slug}', 'bottom')" title="置底">🔚</button>
+        <button class="btn sm" onclick="moveModel('${m.slug}', 'top')" title="置顶" aria-label="置顶 ${escapeHtml(m.slug)}">🔝</button>
+        <button class="btn sm" onclick="moveModel('${m.slug}', 'up')" title="上移" aria-label="上移 ${escapeHtml(m.slug)}">▲</button>
+        <button class="btn sm" onclick="moveModel('${m.slug}', 'down')" title="下移" aria-label="下移 ${escapeHtml(m.slug)}">▼</button>
+        <button class="btn sm" onclick="moveModel('${m.slug}', 'bottom')" title="置底" aria-label="置底 ${escapeHtml(m.slug)}">🔚</button>
         <button class="btn sm blue" onclick="openEditModelModal('${m.slug}')">编辑</button>
         <button class="btn sm danger" onclick="confirmDeleteModel('${m.slug}')">删除</button>
       </td>
@@ -901,6 +928,9 @@ function openAddModelModal(prefilledSlug = '') {
   document.getElementById('edit-visibility').value = 'list';
 
   onTemplateChange();
+  if (document.activeElement && typeof document.activeElement.blur === 'function') {
+    document.activeElement.blur();
+  }
   document.getElementById('edit-modal').classList.add('open');
 }
 
@@ -953,12 +983,27 @@ function openEditModelModal(slug) {
     cb.checked = supported.includes(cb.value);
   });
 
+  if (document.activeElement && typeof document.activeElement.blur === 'function') {
+    document.activeElement.blur();
+  }
   document.getElementById('edit-modal').classList.add('open');
 }
 
 function closeEditModal() {
   document.getElementById('edit-modal').classList.remove('open');
 }
+
+function handleBackdropClick(e) {
+  if (e.target && e.target.id === 'edit-modal') {
+    closeEditModal();
+  }
+}
+
+document.addEventListener('keydown', function(e) {
+  if (e.key === 'Escape') {
+    closeEditModal();
+  }
+});
 
 async function submitEditForm() {
   const isAdd = document.getElementById('edit-is-add').value === '1';
@@ -1185,6 +1230,28 @@ loadAllData();
 '''
 
 
+HTML_PATH = os.path.join(os.path.dirname(__file__), "web_editor.html")
+_CACHED_HTML_TEMPLATE = None
+
+
+def get_html_bytes(catalog_data: Dict[str, Any], catalog_path: str = None) -> bytes:
+    global _CACHED_HTML_TEMPLATE
+    if _CACHED_HTML_TEMPLATE is None:
+        if os.path.exists(HTML_PATH):
+            with open(HTML_PATH, "r", encoding="utf-8") as f:
+                _CACHED_HTML_TEMPLATE = f.read()
+        else:
+            _CACHED_HTML_TEMPLATE = HTML_TEMPLATE
+
+    cat_json = json.dumps(catalog_data, ensure_ascii=False, separators=(",", ":"))
+    up_cache = core.load_upstream_cache(catalog_path)
+    up_json = json.dumps(up_cache, ensure_ascii=False, separators=(",", ":")) if up_cache else "{}"
+
+    html = _CACHED_HTML_TEMPLATE.replace('"__CODEX_CATALOG_DATA__"', cat_json)
+    html = html.replace('"__CODEX_UPSTREAM_DATA__"', up_json)
+    return html.encode("utf-8")
+
+
 class CatalogRequestHandler(http.server.BaseHTTPRequestHandler):
     catalog_path = None
 
@@ -1222,12 +1289,22 @@ class CatalogRequestHandler(http.server.BaseHTTPRequestHandler):
         path = parsed.path
 
         if path == "/" or path == "/index.html":
-            html_bytes = HTML_TEMPLATE.encode("utf-8")
+            try:
+                cat = core.load_catalog(self.catalog_path)
+            except Exception:
+                cat = {"models": []}
+            html_bytes = get_html_bytes(cat, self.catalog_path)
             self.send_response(200)
             self.send_header("Content-Type", "text/html; charset=utf-8")
             self.send_header("Content-Length", str(len(html_bytes)))
+            self.send_header("Cache-Control", "no-cache")
             self.end_headers()
             self.wfile.write(html_bytes)
+            return
+
+        if path == "/favicon.ico":
+            self.send_response(204)
+            self.end_headers()
             return
 
         if path == "/api/catalog":
@@ -1264,10 +1341,12 @@ class CatalogRequestHandler(http.server.BaseHTTPRequestHandler):
                 upstream_models = core.fetch_upstream_models(url, api_key)
                 cat = core.load_catalog(self.catalog_path)
                 comp = core.compare_models(cat, upstream_models)
-                self.send_json(200, {
+                resp_payload = {
                     "upstream_models": upstream_models,
                     "comparison": comp
-                })
+                }
+                core.save_upstream_cache(resp_payload, self.catalog_path)
+                self.send_json(200, resp_payload)
             except Exception as e:
                 self.send_json(500, {"error": str(e)})
             return
@@ -1388,7 +1467,13 @@ class CatalogRequestHandler(http.server.BaseHTTPRequestHandler):
         self.end_headers()
 
 
+class ThreadingTCPServer(socketserver.ThreadingMixIn, socketserver.TCPServer):
+    daemon_threads = True
+    allow_reuse_address = True
+
+
 def run_server(host: str = "127.0.0.1", port: int = 8388, catalog: str = None, open_browser: bool = True):
+    core.ensure_codex_initialized(catalog)
     CatalogRequestHandler.catalog_path = catalog
 
     # 尝试绑定端口，若被占用尝试递增端口
@@ -1396,7 +1481,7 @@ def run_server(host: str = "127.0.0.1", port: int = 8388, catalog: str = None, o
     server = None
     for p in range(current_port, current_port + 20):
         try:
-            server = socketserver.TCPServer((host, p), CatalogRequestHandler)
+            server = ThreadingTCPServer((host, p), CatalogRequestHandler)
             current_port = p
             break
         except OSError:
