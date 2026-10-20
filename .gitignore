@@ -71,3 +71,4 @@ docker-compose.override.yml
 *.log
 
 work/
+.playwright-cli
