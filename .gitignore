@@ -72,3 +72,9 @@ docker-compose.override.yml
 
 work/
 .playwright-cli
+
+# Local generated artifacts
+__pycache__/
+*.exe~
+*.bak
+*.bak-codebuddy-*
