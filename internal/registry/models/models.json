@@ -5169,6 +5169,35 @@
         ],
         "zero_allowed": true
       }
+    },
+    {
+      "id": "minimax-m3.1-flash",
+      "object": "model",
+      "created": 1780000000,
+      "owned_by": "codebuddy",
+      "type": "codebuddy",
+      "display_name": "MiniMax-M3.1-Flash",
+      "name": "minimax-m3.1-flash",
+      "description": "Natively multimodal, strong at Office, agentic, and coding tasks, with excellent inference speed.",
+      "context_length": 1048576,
+      "max_completion_tokens": 128000,
+      "supportedInputModalities": [
+        "text",
+        "image"
+      ],
+      "supportedOutputModalities": [
+        "text"
+      ],
+      "thinking": {
+        "levels": [
+          "low",
+          "medium",
+          "high",
+          "max",
+          "none"
+        ],
+        "zero_allowed": true
+      }
     }
   ]
 }

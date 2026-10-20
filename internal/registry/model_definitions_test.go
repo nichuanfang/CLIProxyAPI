@@ -381,6 +381,7 @@ func TestCodeBuddyModels(t *testing.T) {
 		"glm-5.3-flashx",
 		"minimax-m3-pay",
 		"deepseek-v4-pro",
+		"minimax-m3.1-flash",
 	}
 	models := GetCodeBuddyModels()
 	if len(models) != len(want) {
