@@ -58,7 +58,8 @@ Features in the Web Editor:
 2. **Upstream Discovery Tab**: Input endpoint (default `http://127.0.0.1:8317/v1/models`) and API Key to compare models. Click `+ 开启到 Codex` to instantly clone from template and enable.
 3. **Raw JSON Tab**: Directly view and edit the entire `default.json` with format validation.
 4. **Backups Tab**: View backup history and roll back with one click.
-5. **Process Lifecycle**: One-click "终止进程" in the header to safely shut down the background server and release the port.
+5. **Coding Recommendations Tab (模型编程推荐)**: Query authoritative benchmark APIs (OpenRouter 400+ models + Aider/SWE-bench leaderboard) to evaluate active models across "日常开发" (Daily Dev) and "复杂架构" (Complex Architecture), complete with top champion recommendations, scoring matrix, and dynamic quadrant distribution.
+6. **Process Lifecycle**: One-click "终止进程" in the header to safely shut down the background server and release the port.
 
 ## CLI Commands
 

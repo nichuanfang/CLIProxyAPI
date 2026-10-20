@@ -13,16 +13,19 @@ from typing import Any, Dict
 import model_catalog_core as core
 
 HTML_TEMPLATE = r'''<!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="zh-CN" style="color-scheme: dark">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="color-scheme" content="dark">
+<meta name="theme-color" content="#0d1117">
 <title>Codex 模型配置管理器 (Visual Catalog Manager)</title>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%2358a6ff'><circle cx='12' cy='12' r='10'/></svg>">
+<script id="initial-catalog-data" type="application/json">"__CODEX_CATALOG_DATA__"</script>
+<script id="initial-upstream-data" type="application/json">"__CODEX_UPSTREAM_DATA__"</script>
+<script id="initial-detected-upstream" type="application/json">"__CODEX_DETECTED_UPSTREAM__"</script>
 <style>
 :root {
-  color-scheme: dark;
   --bg: #0d1117;
   --surface: #161b22;
   --surface-hover: #1c2128;
@@ -58,6 +61,8 @@ header {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 10px;
   position: sticky;
   top: 0;
   z-index: 100;
@@ -65,7 +70,9 @@ header {
 .header-title {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 12px;
+  min-width: 0;
 }
 .header-title h1 {
   font-size: 16px;
@@ -74,7 +81,13 @@ header {
 }
 .header-badges {
   display: flex;
+  flex-wrap: wrap;
   gap: 8px;
+  min-width: 0;
+}
+.header-badges .badge {
+  max-width: 100%;
+  overflow-wrap: anywhere;
 }
 .badge {
   background: var(--badge-bg);
@@ -138,11 +151,15 @@ header {
   display: flex;
   align-items: center;
   gap: 8px;
+  min-width: 0;
 }
 .form-group-inline label {
   color: var(--text-muted);
   font-size: 12px;
   white-space: nowrap;
+}
+.form-group-inline input {
+  min-width: 0;
 }
 input[type="text"], input[type="number"], select, textarea {
   background: #0d1117;
@@ -153,13 +170,13 @@ input[type="text"], input[type="number"], select, textarea {
   font-size: 12px;
   font-family: inherit;
 }
-input[type="text"]:focus-visible, input[type="number"]:focus-visible, select:focus-visible, textarea:focus-visible {
-  outline: 2px solid var(--border-active);
-  outline-offset: 1px;
-}
 input[type="text"]:focus, input[type="number"]:focus, select:focus, textarea:focus {
   outline: none;
   border-color: var(--border-active);
+}
+input[type="text"]:focus-visible, input[type="number"]:focus-visible, select:focus-visible, textarea:focus-visible {
+  outline: 2px solid var(--border-active);
+  outline-offset: 1px;
 }
 .nav-tabs {
   display: flex;
@@ -186,16 +203,115 @@ input[type="text"]:focus, input[type="number"]:focus, select:focus, textarea:foc
   border-bottom-color: #f78166;
   font-weight: 600;
 }
+.tab-content[hidden] {
+  display: none !important;
+}
 
 .toolbar {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  flex-wrap: wrap;
   margin-bottom: 12px;
   gap: 12px;
 }
 .search-input {
   width: 280px;
+  max-width: 100%;
+}
+
+.table-scroll {
+  width: 100%;
+  overflow-x: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+.table-scroll .models-table {
+  min-width: 880px;
+  border: none;
+  border-radius: 0;
+}
+
+/* Pagination Bar */
+.pagination-bar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  padding: 10px 4px 4px 4px;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+.pagination-info {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.pagination-controls {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+.page-btn {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  color: var(--text);
+  padding: 3px 8px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  font-size: 12px;
+  min-width: 28px;
+  height: 26px;
+  line-height: 18px;
+  text-align: center;
+  transition: all 0.15s ease;
+  user-select: none;
+}
+.page-btn:hover:not(:disabled) {
+  border-color: var(--border-active);
+  color: #fff;
+  background: var(--surface-hover);
+}
+.page-btn.active {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: #fff;
+  font-weight: 600;
+}
+.page-btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+.page-jump-input {
+  width: 46px;
+  height: 26px;
+  padding: 2px 4px;
+  font-size: 12px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: var(--radius-sm);
+  text-align: center;
+}
+.page-jump-input:focus {
+  outline: none;
+  border-color: var(--border-active);
+}
+.page-size-select {
+  height: 26px;
+  padding: 2px 6px;
+  font-size: 12px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+.page-size-select:focus {
+  outline: none;
+  border-color: var(--border-active);
 }
 
 /* Models Table & Cards */
@@ -218,7 +334,7 @@ input[type="text"]:focus, input[type="number"]:focus, select:focus, textarea:foc
   font-weight: 600;
   font-size: 11px;
   text-transform: uppercase;
-  letter-spacing: 0.5px;
+  letter-spacing: 0;
 }
 .models-table tbody tr:hover {
   background: var(--surface-hover);
@@ -264,12 +380,22 @@ input[type="text"]:focus, input[type="number"]:focus, select:focus, textarea:foc
   justify-content: center;
   z-index: 1000;
   opacity: 0;
+  visibility: hidden;
   pointer-events: none;
-  transition: opacity 0.2s ease;
+  transition: opacity 0.2s ease, visibility 0.2s ease;
 }
 .modal-backdrop.open {
   opacity: 1;
+  visibility: visible;
   pointer-events: auto;
+  transition-delay: 0s, 0s;
+}
+.modal-backdrop.open .modal {
+  animation: modal-in 0.16s ease-out;
+}
+@keyframes modal-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
 }
 .modal {
   background: var(--surface);
@@ -335,6 +461,38 @@ input[type="text"]:focus, input[type="number"]:focus, select:focus, textarea:foc
   color: var(--text-muted);
   text-transform: uppercase;
 }
+.form-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+}
+.checkbox-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 6px;
+}
+.checkbox-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px;
+  text-transform: none;
+  font-weight: 400;
+  color: var(--text);
+  cursor: pointer;
+  padding: 3px 7px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+}
+.checkbox-item:focus-within {
+  border-color: var(--border-active);
+}
+.checkbox-item input {
+  margin: 0;
+  accent-color: var(--blue);
+}
 .form-col input, .form-col select, .form-col textarea {
   width: 100%;
 }
@@ -379,6 +537,280 @@ input[type="text"]:focus, input[type="number"]:focus, select:focus, textarea:foc
   border-radius: var(--radius);
   resize: vertical;
 }
+
+.skip-link {
+  position: absolute;
+  left: 12px;
+  top: -40px;
+  z-index: 3000;
+  padding: 8px 12px;
+  background: var(--surface);
+  border: 1px solid var(--border-active);
+  border-radius: var(--radius);
+  color: var(--text-heading);
+  text-decoration: none;
+}
+.skip-link:focus {
+  top: 8px;
+}
+
+/* 编程能力评测与推荐专属样式 */
+.benchmark-banner {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 12px 18px;
+  margin-bottom: 16px;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+.benchmark-sources-info {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+.source-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: #1c2128;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 3px 10px;
+  font-size: 11px;
+  color: var(--text);
+}
+.recommend-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+  gap: 16px;
+  margin-bottom: 20px;
+}
+.rec-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 20px;
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+.rec-card:hover {
+  border-color: var(--border-active);
+  box-shadow: 0 4px 16px rgba(0,0,0,0.3);
+}
+.rec-card.daily-pick {
+  border-left: 4px solid #2ea043;
+}
+.rec-card.complex-pick {
+  border-left: 4px solid #a371f7;
+}
+.rec-card-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 10px;
+}
+.rec-card.daily-pick .rec-card-badge { color: #3fb950; }
+.rec-card.complex-pick .rec-card-badge { color: #bc8cff; }
+.rec-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 14px;
+}
+.rec-model-title {
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--text-heading);
+  margin-bottom: 4px;
+}
+.rec-model-sub {
+  font-size: 12px;
+  color: var(--text-muted);
+  font-family: monospace;
+}
+.rec-score-badge {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-width: 68px;
+  padding: 6px 12px;
+  border-radius: 8px;
+  font-weight: 700;
+  line-height: 1.2;
+}
+.rec-card.daily-pick .rec-score-badge {
+  background: rgba(46, 160, 67, 0.15);
+  border: 1px solid rgba(46, 160, 67, 0.4);
+  color: #3fb950;
+}
+.rec-card.complex-pick .rec-score-badge {
+  background: rgba(163, 113, 247, 0.15);
+  border: 1px solid rgba(163, 113, 247, 0.4);
+  color: #bc8cff;
+}
+.rec-score-num { font-size: 20px; }
+.rec-score-label { font-size: 9px; font-weight: 500; text-transform: uppercase; opacity: 0.85; }
+.rec-features {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 14px;
+}
+.rec-feat-item {
+  font-size: 11px;
+  background: #1c2128;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 2px 8px;
+  color: var(--text);
+}
+.rec-points {
+  margin: 0 0 16px 0;
+  padding-left: 18px;
+  font-size: 12px;
+  color: var(--text);
+  line-height: 1.6;
+}
+.rec-points li { margin-bottom: 4px; }
+.rec-advice-box {
+  margin-top: auto;
+  background: #0d1117;
+  border: 1px dashed var(--border);
+  border-radius: 6px;
+  padding: 10px 12px;
+  font-size: 12px;
+  color: var(--text-muted);
+  line-height: 1.5;
+}
+.rec-advice-box strong { color: var(--text-heading); }
+
+/* 矩阵评分条 */
+.score-bar-container {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 130px;
+}
+.score-bar-bg {
+  flex: 1;
+  height: 8px;
+  background: #21262d;
+  border-radius: 4px;
+  overflow: hidden;
+  position: relative;
+}
+.score-bar-fill {
+  height: 100%;
+  border-radius: 4px;
+  transition: width 0.4s ease;
+}
+.score-bar-fill.daily {
+  background: linear-gradient(90deg, #238636, #3fb950);
+}
+.score-bar-fill.arch {
+  background: linear-gradient(90deg, #8957e5, #bc8cff);
+}
+.score-val {
+  font-size: 12px;
+  font-weight: 600;
+  font-family: monospace;
+  min-width: 32px;
+  text-align: right;
+}
+
+/* 象限图容器 */
+.quadrant-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 18px;
+  margin-top: 20px;
+}
+.quadrant-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+.quadrant-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-heading);
+}
+.quadrant-svg-wrap {
+  width: 100%;
+  max-width: 100%;
+  aspect-ratio: 16 / 5.2;
+  min-height: 440px;
+  max-height: 540px;
+  margin: 0 auto;
+  background: #090d13;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  position: relative;
+  overflow: hidden;
+}
+
+@media (max-width: 720px) {
+  header {
+    padding: 10px 14px;
+  }
+  .container {
+    padding: 0 14px;
+  }
+  .upstream-bar {
+    padding: 10px 12px;
+    gap: 10px;
+  }
+  .upstream-bar .form-group-inline {
+    flex: 1 1 100% !important;
+    min-width: 0 !important;
+  }
+  .upstream-bar > .btn {
+    width: 100%;
+    justify-content: center;
+  }
+  .nav-tabs {
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+  .nav-tabs::-webkit-scrollbar {
+    display: none;
+  }
+  .tab-btn {
+    flex: 0 0 auto;
+    padding: 8px 12px;
+  }
+  .toolbar > div,
+  .toolbar > span {
+    min-width: 0;
+  }
+  .form-row {
+    flex-wrap: wrap;
+  }
+  .modal {
+    width: calc(100% - 24px);
+    max-height: 92vh;
+  }
+  .modal-body {
+    padding: 14px 16px;
+  }
+}
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
     transition-duration: 0.01ms !important;
@@ -388,6 +820,7 @@ input[type="text"]:focus, input[type="number"]:focus, select:focus, textarea:foc
 </style>
 </head>
 <body>
+<a class="skip-link" href="#configured-tbody">跳到模型列表</a>
 
 <header>
   <div class="header-title">
@@ -405,44 +838,48 @@ input[type="text"]:focus, input[type="number"]:focus, select:focus, textarea:foc
   </div>
 </header>
 
-<div class="container">
+<main class="container" id="main-content">
   <!-- 上游源拉取栏 -->
   <div class="upstream-bar">
     <div class="form-group-inline" style="flex: 2; min-width: 280px;">
-      <label>模型源 API:</label>
-      <input type="text" id="upstream-url" value="http://127.0.0.1:8317/v1/models" style="flex: 1;" placeholder="http://127.0.0.1:8317/v1/models">
+      <label for="upstream-url">模型源 API:</label>
+      <input type="text" id="upstream-url" name="upstream-url" value="" style="flex: 1;" placeholder="http://127.0.0.1:8317/v1/models" autocomplete="off" spellcheck="false" oninput="this.dataset.userEdited='true'">
     </div>
     <div class="form-group-inline" style="flex: 1.5; min-width: 220px;">
       <label for="upstream-key">API Key:</label>
-      <input type="text" id="upstream-key" value="sk-U6cnDx0z3xtOGLoZXSGo" style="flex: 1;" placeholder="sk-…">
+      <input type="text" id="upstream-key" name="upstream-key" value="" style="flex: 1;" placeholder="sk-…" autocomplete="off" spellcheck="false" oninput="this.dataset.userEdited='true'">
     </div>
     <button class="btn blue" onclick="fetchUpstream()">拉取可用模型源</button>
   </div>
 
   <!-- 选项卡 -->
   <div class="nav-tabs" role="tablist">
-    <button class="tab-btn active" role="tab" aria-selected="true" data-tab="configured" onclick="switchTab('configured', this)">
-      已启用模型列表 (<span id="tab-configured-num">0</span>)
+    <button class="tab-btn active" id="tab-btn-configured" role="tab" aria-selected="true" aria-controls="tab-configured" tabindex="0" data-tab="configured" onclick="switchTab('configured', this)">
+      已启用模型列表
     </button>
-    <button class="tab-btn" role="tab" aria-selected="false" data-tab="upstream" onclick="switchTab('upstream', this)">
-      上游模型比对与开启 (<span id="tab-upstream-num">0</span>)
+    <button class="tab-btn" id="tab-btn-upstream" role="tab" aria-selected="false" aria-controls="tab-upstream" tabindex="-1" data-tab="upstream" onclick="switchTab('upstream', this)">
+      上游模型比对与开启
     </button>
-    <button class="tab-btn" role="tab" aria-selected="false" data-tab="raw" onclick="switchTab('raw', this)">
+    <button class="tab-btn" id="tab-btn-raw" role="tab" aria-selected="false" aria-controls="tab-raw" tabindex="-1" data-tab="raw" onclick="switchTab('raw', this)">
       原始 JSON 编辑
     </button>
-    <button class="tab-btn" role="tab" aria-selected="false" data-tab="backups" onclick="switchTab('backups', this)">
-      备份与恢复 (<span id="tab-backups-num">0</span>)
+    <button class="tab-btn" id="tab-btn-backups" role="tab" aria-selected="false" aria-controls="tab-backups" tabindex="-1" data-tab="backups" onclick="switchTab('backups', this)">
+      备份与恢复
+    </button>
+    <button class="tab-btn" id="tab-btn-recommend" role="tab" aria-selected="false" aria-controls="tab-recommend" tabindex="-1" data-tab="recommend" onclick="switchTab('recommend', this)">
+      模型编程推荐
     </button>
   </div>
 
   <!-- Tab 1: 已配置模型 -->
-  <div id="tab-configured" class="tab-content" role="tabpanel">
+  <div id="tab-configured" class="tab-content" role="tabpanel" aria-labelledby="tab-btn-configured" tabindex="0">
     <div class="toolbar">
-      <input type="text" class="search-input" id="configured-search" aria-label="搜索模型 slug 或名称" placeholder="搜索模型 slug 或名称…" oninput="renderConfiguredTable()">
+      <input type="text" class="search-input" id="configured-search" name="configured-search" aria-label="搜索模型 slug 或名称" placeholder="搜索模型 slug 或名称…" autocomplete="off" oninput="paginationState.configured.page=1; renderConfiguredTable()">
       <div style="color: var(--text-muted); font-size: 11px;">
         提示: 支持直接鼠标按住左侧 ☰ 拖拽表格行排序
       </div>
     </div>
+    <div class="table-scroll">
     <table class="models-table">
       <thead>
         <tr>
@@ -459,14 +896,17 @@ input[type="text"]:focus, input[type="number"]:focus, select:focus, textarea:foc
         <tr><td colspan="7" style="text-align: center; color: var(--text-muted);">正在加载...</td></tr>
       </tbody>
     </table>
+    </div>
+    <div class="pagination-bar" id="configured-pagination"></div>
   </div>
 
   <!-- Tab 2: 上游模型比对 -->
-  <div id="tab-upstream" class="tab-content" role="tabpanel" style="display: none;">
+  <div id="tab-upstream" class="tab-content" role="tabpanel" aria-labelledby="tab-btn-upstream" tabindex="0" style="display: none;">
     <div class="toolbar">
-      <input type="text" class="search-input" id="upstream-search" aria-label="筛选上游模型" placeholder="筛选上游模型…" oninput="renderUpstreamTable()">
+        <input type="text" class="search-input" id="upstream-search" name="upstream-search" aria-label="筛选上游模型" placeholder="筛选上游模型…" autocomplete="off" oninput="paginationState.upstream.page=1; renderUpstreamTable()">
       <span style="color: var(--text-muted); font-size: 12px;">直接点击“开启到 Codex”即可快速根据模板加入目录</span>
     </div>
+    <div class="table-scroll">
     <table class="models-table">
       <thead>
         <tr>
@@ -481,10 +921,12 @@ input[type="text"]:focus, input[type="number"]:focus, select:focus, textarea:foc
         <tr><td colspan="5" style="text-align: center; color: var(--text-muted);">请点击上方“拉取可用模型源”按钮</td></tr>
       </tbody>
     </table>
+    </div>
+    <div class="pagination-bar" id="upstream-pagination"></div>
   </div>
 
   <!-- Tab 3: 原始 JSON 编辑 -->
-  <div id="tab-raw" class="tab-content" role="tabpanel" style="display: none;">
+  <div id="tab-raw" class="tab-content" role="tabpanel" aria-labelledby="tab-btn-raw" tabindex="0" style="display: none;">
     <div class="toolbar">
       <span style="color: var(--text-muted); font-size: 12px;">直接修改 default.json 完整内容。保存前会自动创建完整安全备份。</span>
       <div>
@@ -492,15 +934,16 @@ input[type="text"]:focus, input[type="number"]:focus, select:focus, textarea:foc
         <button class="btn sm primary" onclick="saveRawJson()">保存并应用</button>
       </div>
     </div>
-    <textarea id="raw-json-text" class="json-editor" spellcheck="false"></textarea>
+    <textarea id="raw-json-text" class="json-editor" aria-label="模型目录 JSON" spellcheck="false"></textarea>
   </div>
 
   <!-- Tab 4: 备份管理 -->
-  <div id="tab-backups" class="tab-content" role="tabpanel" style="display: none;">
+  <div id="tab-backups" class="tab-content" role="tabpanel" aria-labelledby="tab-btn-backups" tabindex="0" style="display: none;">
     <div class="toolbar">
       <span style="color: var(--text-muted); font-size: 12px;">每次添加、更新、删除或保存操作都会自动生成一份时间戳备份。</span>
       <button class="btn sm blue" onclick="createManualBackup()">+ 手动立即备份</button>
     </div>
+    <div class="table-scroll">
     <table class="models-table">
       <thead>
         <tr>
@@ -514,24 +957,84 @@ input[type="text"]:focus, input[type="number"]:focus, select:focus, textarea:foc
         <tr><td colspan="4" style="text-align: center; color: var(--text-muted);">正在加载备份列表...</td></tr>
       </tbody>
     </table>
+    </div>
+    <div class="pagination-bar" id="backups-pagination"></div>
+  </div>
+
+  <!-- Tab 5: 模型编程推荐 -->
+  <div id="tab-recommend" class="tab-content" role="tabpanel" aria-labelledby="tab-btn-recommend" tabindex="0" style="display: none;">
+    <!-- 数据源与检测状态 -->
+    <div class="benchmark-banner">
+      <div class="benchmark-sources-info">
+        <span style="font-weight: 600; color: var(--text-heading);">权威评测源接入:</span>
+        <span class="source-pill" title="涵盖国内外 400+ 最新模型全量元数据与架构参数">
+          <span style="color: #58a6ff;">●</span> OpenRouter 开放 API
+        </span>
+        <span class="source-pill" title="基于 SWE-bench 真实 GitHub PR 代码编辑评测">
+          <span style="color: #3fb950;">●</span> Aider 编程实测榜单
+        </span>
+        <span id="benchmark-status-pill" class="badge success">基准数据同步就绪</span>
+        <span style="font-size: 11px;" id="benchmark-updated-time">检测时间: 加载中…</span>
+      </div>
+      <div>
+        <button class="btn sm" onclick="refreshBenchmarkData()">🔄 重新检测最新数据</button>
+      </div>
+    </div>
+
+    <!-- 双核心场景首选推荐卡片 -->
+    <div class="recommend-cards" id="recommend-cards-container">
+      <div style="grid-column: 1 / -1; text-align: center; color: var(--text-muted); padding: 32px;">
+        正在根据当前已启用的模型评估编程画像与场景推荐...
+      </div>
+    </div>
+
+    <!-- 评分矩阵表格 -->
+    <div class="table-scroll">
+    <table class="models-table">
+      <thead>
+        <tr>
+          <th style="width: 220px;">模型标识 (Slug)</th>
+          <th style="width: 180px;">场景定位标签</th>
+          <th style="width: 170px;">日常开发评分</th>
+          <th style="width: 170px;">复杂架构评分</th>
+          <th style="width: 140px;">推荐思考配置</th>
+          <th>典型推荐工作流与优势</th>
+        </tr>
+      </thead>
+      <tbody id="recommend-tbody">
+        <tr><td colspan="6" style="text-align: center; color: var(--text-muted);">正在计算能力评分矩阵...</td></tr>
+      </tbody>
+    </table>
+    </div>
+
+    <!-- 双维度能力象限分布图 -->
+    <div class="quadrant-card">
+      <div class="quadrant-header">
+        <div class="quadrant-title">📊 已启用模型编程能力象限分布 (Capability Quadrant)</div>
+        <div style="font-size: 11px; color: var(--text-muted);">横轴: 日常敏捷度 | 纵轴: 复杂架构与推理深度</div>
+      </div>
+      <div class="quadrant-svg-wrap" id="quadrant-chart-container">
+        <!-- 由 JS 动态绘制 SVG 象限与模型节点 -->
+      </div>
+    </div>
   </div>
 </div>
 
 <!-- 编辑模型 Modal -->
 <div class="modal-backdrop" id="edit-modal" onclick="handleBackdropClick(event)">
-  <div class="modal">
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="modal-title">
     <div class="modal-header">
       <h2 id="modal-title">编辑模型配置</h2>
-      <button class="modal-close" onclick="closeEditModal()" aria-label="关闭">&times;</button>
+      <button type="button" class="modal-close" onclick="closeEditModal()" aria-label="关闭">&times;</button>
     </div>
     <div class="modal-body">
-      <input type="hidden" id="edit-orig-slug">
-      <input type="hidden" id="edit-is-add" value="0">
+      <input type="hidden" id="edit-orig-slug" name="edit-orig-slug">
+      <input type="hidden" id="edit-is-add" name="edit-is-add" value="0">
 
       <div class="form-row" id="template-select-row" style="display: none;">
         <div class="form-col">
-          <label>克隆参考模板 (Base Template)</label>
-          <select id="edit-template-slug" onchange="onTemplateChange()">
+          <label for="edit-template-slug">克隆参考模板 (Base Template)</label>
+          <select id="edit-template-slug" name="edit-template-slug" onchange="onTemplateChange()">
             <option value="">-- 选择模板模型 --</option>
           </select>
           <small>新模型将完整继承该模板的系统指令和架构配置</small>
@@ -540,27 +1043,27 @@ input[type="text"]:focus, input[type="number"]:focus, select:focus, textarea:foc
 
       <div class="form-row">
         <div class="form-col">
-          <label>模型标识 (Slug / ID) *</label>
-          <input type="text" id="edit-slug" placeholder="e.g. deepseek-v4.1-flash">
+          <label for="edit-slug">模型标识 (Slug / ID) *</label>
+          <input type="text" id="edit-slug" name="edit-slug" placeholder="e.g. deepseek-v4.1-flash" autocomplete="off" spellcheck="false">
           <small>必须与 /v1/models 中的模型 ID 完全一致</small>
         </div>
         <div class="form-col">
-          <label>显示名称 (Display Name) *</label>
-          <input type="text" id="edit-display-name" placeholder="e.g. DeepSeek-V4.1-Flash">
+          <label for="edit-display-name">显示名称 (Display Name) *</label>
+          <input type="text" id="edit-display-name" name="edit-display-name" placeholder="e.g. DeepSeek-V4.1-Flash" autocomplete="off">
         </div>
       </div>
 
       <div class="form-row">
         <div class="form-col">
-          <label>模型描述 (Description)</label>
-          <input type="text" id="edit-description" placeholder="模型能力简述">
+          <label for="edit-description">模型描述 (Description)</label>
+          <input type="text" id="edit-description" name="edit-description" placeholder="模型能力简述" autocomplete="off">
         </div>
       </div>
 
       <div class="form-row">
         <div class="form-col">
-          <label>默认思考深度 (Default Reasoning)</label>
-          <select id="edit-default-reasoning">
+          <label for="edit-default-reasoning">默认思考深度 (Default Reasoning)</label>
+          <select id="edit-default-reasoning" name="edit-default-reasoning">
             <option value="none">none</option>
             <option value="low">low</option>
             <option value="medium">medium</option>
@@ -570,8 +1073,8 @@ input[type="text"]:focus, input[type="number"]:focus, select:focus, textarea:foc
           </select>
         </div>
         <div class="form-col">
-          <label>终端执行类型 (Shell Type)</label>
-          <select id="edit-shell-type">
+          <label for="edit-shell-type">终端执行类型 (Shell Type)</label>
+          <select id="edit-shell-type" name="edit-shell-type">
             <option value="shell_command">shell_command</option>
             <option value="unified_exec">unified_exec</option>
           </select>
@@ -580,12 +1083,12 @@ input[type="text"]:focus, input[type="number"]:focus, select:focus, textarea:foc
 
       <div class="form-row">
         <div class="form-col">
-          <label>优先级 (Priority 数字越大越靠后)</label>
-          <input type="number" id="edit-priority" value="1000">
+          <label for="edit-priority">优先级 (Priority 数字越大越靠后)</label>
+          <input type="number" id="edit-priority" name="edit-priority" value="1000" inputmode="numeric">
         </div>
         <div class="form-col">
-          <label>下拉可见性 (Visibility)</label>
-          <select id="edit-visibility">
+          <label for="edit-visibility">下拉可见性 (Visibility)</label>
+          <select id="edit-visibility" name="edit-visibility">
             <option value="list">list (在下拉菜单显示)</option>
             <option value="hidden">hidden (隐藏)</option>
           </select>
@@ -594,35 +1097,35 @@ input[type="text"]:focus, input[type="number"]:focus, select:focus, textarea:foc
 
       <div class="form-row">
         <div class="form-col">
-          <label>上下文上限 (Context Window)</label>
-          <input type="number" id="edit-context-window" value="1048576">
+          <label for="edit-context-window">上下文上限 (Context Window)</label>
+          <input type="number" id="edit-context-window" name="edit-context-window" value="1048576" inputmode="numeric">
         </div>
         <div class="form-col">
-          <label>单轮最大输出 (Max Output Tokens)</label>
-          <input type="number" id="edit-max-output-tokens" value="131072">
+          <label for="edit-max-output-tokens">单轮最大输出 (Max Output Tokens)</label>
+          <input type="number" id="edit-max-output-tokens" name="edit-max-output-tokens" value="131072" inputmode="numeric">
         </div>
         <div class="form-col">
-          <label>压缩触发阈值 (Auto Compact Limit)</label>
-          <input type="number" id="edit-auto-compact" value="943718">
+          <label for="edit-auto-compact">压缩触发阈值 (Auto Compact Limit)</label>
+          <input type="number" id="edit-auto-compact" name="edit-auto-compact" value="943718" inputmode="numeric">
         </div>
       </div>
 
       <div class="form-row">
         <div class="form-col">
-          <label>支持的思考深度 (Supported Reasoning Levels)</label>
-          <div style="display: flex; gap: 12px; margin-top: 6px;" id="reasoning-checkboxes">
-            <label><input type="checkbox" value="low"> low</label>
-            <label><input type="checkbox" value="medium"> medium</label>
-            <label><input type="checkbox" value="high" checked> high</label>
-            <label><input type="checkbox" value="xhigh"> xhigh</label>
-            <label><input type="checkbox" value="max" checked> max</label>
+          <span id="reasoning-label" class="form-label">支持的思考深度 (Supported Reasoning Levels)</span>
+          <div class="checkbox-group" role="group" aria-labelledby="reasoning-label" id="reasoning-checkboxes">
+            <label class="checkbox-item"><input type="checkbox" name="reasoning-level" value="low"> low</label>
+            <label class="checkbox-item"><input type="checkbox" name="reasoning-level" value="medium"> medium</label>
+            <label class="checkbox-item"><input type="checkbox" name="reasoning-level" value="high" checked> high</label>
+            <label class="checkbox-item"><input type="checkbox" name="reasoning-level" value="xhigh"> xhigh</label>
+            <label class="checkbox-item"><input type="checkbox" name="reasoning-level" value="max" checked> max</label>
           </div>
         </div>
       </div>
     </div>
     <div class="modal-footer">
-      <button class="btn" onclick="closeEditModal()">取消</button>
-      <button class="btn primary" onclick="submitEditForm()">保存配置</button>
+      <button type="button" class="btn" onclick="closeEditModal()">取消</button>
+      <button type="button" class="btn primary" onclick="submitEditForm()">保存配置</button>
     </div>
   </div>
 </div>
@@ -638,6 +1141,98 @@ let state = {
   backups: []
 };
 
+const paginationState = {
+  configured: { page: 1, pageSize: 10 },
+  upstream: { page: 1, pageSize: 10 },
+  backups: { page: 1, pageSize: 10 }
+};
+
+function renderPagination(containerId, tabKey, totalItems) {
+  const container = document.getElementById(containerId);
+  if (!container) return;
+
+  const conf = paginationState[tabKey];
+  const pageSize = conf.pageSize || 10;
+  const totalPages = Math.max(1, Math.ceil(totalItems / pageSize));
+
+  if (conf.page > totalPages) conf.page = totalPages;
+  if (conf.page < 1) conf.page = 1;
+
+  if (totalItems === 0) {
+    container.innerHTML = '<div class="pagination-info"><span>共 0 条数据</span></div>';
+    return;
+  }
+
+  const startIdx = (conf.page - 1) * pageSize + 1;
+  const endIdx = Math.min(conf.page * pageSize, totalItems);
+
+  let pages = [];
+  if (totalPages <= 7) {
+    for (let i = 1; i <= totalPages; i++) pages.push(i);
+  } else {
+    pages.push(1);
+    let left = Math.max(2, conf.page - 2);
+    let right = Math.min(totalPages - 1, conf.page + 2);
+    if (left > 2) pages.push('...');
+    for (let i = left; i <= right; i++) pages.push(i);
+    if (right < totalPages - 1) pages.push('...');
+    pages.push(totalPages);
+  }
+
+  let html = `
+    <div class="pagination-info">
+      <span>显示第 ${startIdx} - ${endIdx} 条，共 ${totalItems} 条</span>
+      <select class="page-size-select" onchange="changePageSize('${tabKey}', this.value)" title="每页显示条数">
+        <option value="10" ${pageSize === 10 ? 'selected' : ''}>10 条/页</option>
+        <option value="20" ${pageSize === 20 ? 'selected' : ''}>20 条/页</option>
+        <option value="50" ${pageSize === 50 ? 'selected' : ''}>50 条/页</option>
+      </select>
+    </div>
+    <div class="pagination-controls">
+      <button class="page-btn" ${conf.page === 1 ? 'disabled' : ''} onclick="gotoPage('${tabKey}', 1)" title="首页">«</button>
+      <button class="page-btn" ${conf.page === 1 ? 'disabled' : ''} onclick="gotoPage('${tabKey}', ${conf.page - 1})" title="上一页">‹</button>
+  `;
+
+  pages.forEach(p => {
+    if (p === '...') {
+      html += `<span style="padding: 0 4px; color: var(--text-muted); user-select: none;">…</span>`;
+    } else {
+      const active = (p === conf.page) ? 'active' : '';
+      html += `<button class="page-btn ${active}" onclick="gotoPage('${tabKey}', ${p})">${p}</button>`;
+    }
+  });
+
+  html += `
+      <button class="page-btn" ${conf.page === totalPages ? 'disabled' : ''} onclick="gotoPage('${tabKey}', ${conf.page + 1})" title="下一页">›</button>
+      <button class="page-btn" ${conf.page === totalPages ? 'disabled' : ''} onclick="gotoPage('${tabKey}', ${totalPages})" title="末页">»</button>
+      <span style="margin-left: 6px;">跳至</span>
+      <input type="number" class="page-jump-input" min="1" max="${totalPages}" value="${conf.page}" onkeydown="if(event.key==='Enter') gotoPage('${tabKey}', this.value)" onchange="gotoPage('${tabKey}', this.value)">
+      <span>页</span>
+    </div>
+  `;
+
+  container.innerHTML = html;
+}
+
+function gotoPage(tabKey, targetPage) {
+  let p = parseInt(targetPage, 10);
+  if (isNaN(p) || p < 1) p = 1;
+  const conf = paginationState[tabKey];
+  conf.page = p;
+  if (tabKey === 'configured') renderConfiguredTable();
+  else if (tabKey === 'upstream') renderUpstreamTable();
+  else if (tabKey === 'backups') renderBackupsTable();
+}
+
+function changePageSize(tabKey, size) {
+  const s = parseInt(size, 10) || 10;
+  paginationState[tabKey].pageSize = s;
+  paginationState[tabKey].page = 1;
+  if (tabKey === 'configured') renderConfiguredTable();
+  else if (tabKey === 'upstream') renderUpstreamTable();
+  else if (tabKey === 'backups') renderBackupsTable();
+}
+
 function showToast(msg, type = 'info') {
   const toast = document.getElementById('toast');
   toast.textContent = msg;
@@ -649,19 +1244,67 @@ function switchTab(name, btn) {
   document.querySelectorAll('.tab-btn').forEach(b => {
     b.classList.remove('active');
     b.setAttribute('aria-selected', 'false');
+    b.setAttribute('tabindex', '-1');
   });
-  document.querySelectorAll('.tab-content').forEach(c => c.style.display = 'none');
+  document.querySelectorAll('.tab-content').forEach(c => {
+    c.style.display = 'none';
+    c.hidden = true;
+  });
   const targetBtn = btn || (typeof event !== 'undefined' && event ? event.currentTarget : null) || document.querySelector(`.tab-btn[data-tab="${name}"]`);
   if (targetBtn) {
     targetBtn.classList.add('active');
     targetBtn.setAttribute('aria-selected', 'true');
+    targetBtn.setAttribute('tabindex', '0');
   }
   const panel = document.getElementById('tab-' + name);
-  if (panel) panel.style.display = 'block';
+  if (panel) {
+    panel.style.display = 'block';
+    panel.hidden = false;
+  }
+  if (history.replaceState) {
+    const url = new URL(window.location.href);
+    if (url.searchParams.get('tab') !== name) {
+      url.searchParams.set('tab', name);
+      history.replaceState(null, '', url.pathname + '?' + url.searchParams.toString() + url.hash);
+    }
+  }
   if (name === 'raw') {
     document.getElementById('raw-json-text').value = JSON.stringify(state.catalog, null, 2);
   } else if (name === 'backups') {
     loadBackups();
+  } else if (name === 'recommend') {
+    loadBenchmarkRecommendations();
+  }
+}
+
+function setupTabs() {
+  const tabs = [...document.querySelectorAll('.nav-tabs .tab-btn')];
+  const navTabs = document.querySelector('.nav-tabs');
+  if (navTabs.hasAttribute('data-ready')) return;
+  navTabs.setAttribute('data-ready', 'true');
+  tabs.forEach(tab => {
+    tab.setAttribute('tabindex', tab.classList.contains('active') ? '0' : '-1');
+  });
+  navTabs.addEventListener('keydown', e => {
+    const current = tabs.indexOf(document.activeElement);
+    if (current < 0) return;
+    let next = -1;
+    if (e.key === 'ArrowRight') next = (current + 1) % tabs.length;
+    else if (e.key === 'ArrowLeft') next = (current - 1 + tabs.length) % tabs.length;
+    else if (e.key === 'Home') next = 0;
+    else if (e.key === 'End') next = tabs.length - 1;
+    if (next >= 0) {
+      e.preventDefault();
+      tabs[next].focus();
+      switchTab(tabs[next].dataset.tab, tabs[next]);
+    }
+  });
+  const initial = new URL(window.location.href).searchParams.get('tab') || '';
+  const initialTab = tabs.find(t => t.dataset.tab === initial);
+  if (initialTab) {
+    switchTab(initial, initialTab);
+  } else {
+    switchTab('configured', tabs[0]);
   }
 }
 
@@ -675,7 +1318,12 @@ async function loadAllData() {
 
     document.getElementById('catalog-path-badge').textContent = '路径: ' + (data.path || 'default.json');
     document.getElementById('configured-count-badge').textContent = '已启用: ' + state.catalog.models.length;
-    document.getElementById('tab-configured-num').textContent = state.catalog.models.length;
+    const tabConf = document.getElementById('tab-configured-num');
+    if (tabConf) tabConf.textContent = state.catalog.models.length;
+
+    if (data.detected_upstream) {
+      applyDetectedUpstream(data.detected_upstream);
+    }
 
     renderConfiguredTable();
     loadBackups();
@@ -690,8 +1338,12 @@ async function loadAllData() {
 }
 
 async function fetchUpstream(silent = false) {
-  const url = document.getElementById('upstream-url').value;
-  const key = document.getElementById('upstream-key').value;
+  const url = (document.getElementById('upstream-url').value || '').trim();
+  const key = (document.getElementById('upstream-key').value || '').trim();
+  if (!url) {
+    if (!silent) showToast('请先输入模型源 API 地址', 'error');
+    return;
+  }
   if (!silent) showToast('正在拉取上游模型源...', 'info');
 
   try {
@@ -706,7 +1358,8 @@ async function fetchUpstream(silent = false) {
     state.comparison = data.comparison;
 
     document.getElementById('upstream-count-badge').textContent = '上游可用: ' + state.upstreamModels.length;
-    document.getElementById('tab-upstream-num').textContent = state.upstreamModels.length;
+    const tabUps = document.getElementById('tab-upstream-num');
+    if (tabUps) tabUps.textContent = state.upstreamModels.length;
 
     renderUpstreamTable();
     if (!silent) showToast('成功拉取 ' + state.upstreamModels.length + ' 个上游模型', 'success');
@@ -734,10 +1387,17 @@ function renderConfiguredTable() {
 
   if (models.length === 0) {
     tbody.innerHTML = '<tr><td colspan="7" style="text-align: center; color: var(--text-muted); padding: 24px;">暂无匹配的配置模型</td></tr>';
+    renderPagination('configured-pagination', 'configured', 0);
     return;
   }
 
-  models.forEach((m, idx) => {
+  const conf = paginationState.configured;
+  const totalItems = models.length;
+  const totalPages = Math.max(1, Math.ceil(totalItems / conf.pageSize));
+  if (conf.page > totalPages) conf.page = totalPages;
+  const pagedModels = models.slice((conf.page - 1) * conf.pageSize, conf.page * conf.pageSize);
+
+  pagedModels.forEach((m, idx) => {
     const tr = document.createElement('tr');
     tr.setAttribute('draggable', 'true');
     tr.dataset.slug = m.slug;
@@ -765,12 +1425,14 @@ function renderConfiguredTable() {
       <td><span class="tag shell">${escapeHtml(shell)}</span></td>
       <td><span class="tag">${escapeHtml(vis)}</span></td>
       <td style="text-align: right; white-space: nowrap;">
-        <button class="btn sm blue" onclick="openEditModelModal('${m.slug}')">编辑</button>
-        <button class="btn sm danger" onclick="confirmDeleteModel('${m.slug}')">删除</button>
+        <button class="btn sm blue" data-action="edit" data-slug="${escapeHtml(m.slug)}" aria-label="编辑 ${escapeHtml(m.slug)}">编辑</button>
+        <button class="btn sm danger" data-action="delete" data-slug="${escapeHtml(m.slug)}" aria-label="删除 ${escapeHtml(m.slug)}">删除</button>
       </td>
     `;
     tbody.appendChild(tr);
   });
+
+  renderPagination('configured-pagination', 'configured', totalItems);
 }
 
 let draggedRow = null;
@@ -863,6 +1525,354 @@ async function shutdownServer() {
   }
 }
 
+let benchmarkState = {
+  data: null,
+  loading: false
+};
+
+async function loadBenchmarkRecommendations(forceRefresh = false) {
+  if (benchmarkState.loading) return;
+  benchmarkState.loading = true;
+
+  const statusPill = document.getElementById('benchmark-status-pill');
+  if (statusPill && forceRefresh) {
+    statusPill.className = 'badge warning';
+    statusPill.textContent = '正在重新抓取权威平台...';
+  }
+
+  try {
+    const url = forceRefresh ? '/api/benchmark/refresh' : '/api/benchmark/recommend';
+    const method = forceRefresh ? 'POST' : 'GET';
+    const res = await fetch(url, { method });
+    const data = await res.json();
+    if (data.error) throw new Error(data.error);
+
+    benchmarkState.data = data;
+    renderBenchmarkView(data);
+    if (forceRefresh) {
+      showToast('最新权威模型能力基准已同步刷新！', 'success');
+    }
+  } catch (err) {
+    showToast('加载推荐数据失败: ' + err.message, 'error');
+    const cardsCont = document.getElementById('recommend-cards-container');
+    if (cardsCont) {
+      cardsCont.innerHTML = `<div style="grid-column: 1 / -1; color: var(--danger); padding: 24px; text-align: center;">加载评测推荐失败: ${escapeHtml(err.message)}</div>`;
+    }
+  } finally {
+    benchmarkState.loading = false;
+  }
+}
+
+function refreshBenchmarkData() {
+  loadBenchmarkRecommendations(true);
+}
+
+function renderBenchmarkView(data) {
+  const statusPill = document.getElementById('benchmark-status-pill');
+  const timeEl = document.getElementById('benchmark-updated-time');
+  if (statusPill) {
+    if (data.source_status === 'online_synced') {
+      statusPill.className = 'badge success';
+      statusPill.textContent = '权威数据实时已同步';
+    } else {
+      statusPill.className = 'badge info';
+      statusPill.textContent = '本地权威基准已就绪';
+    }
+  }
+  if (timeEl && data.updated_at_str) {
+    timeEl.textContent = '检测时间: ' + data.updated_at_str;
+  }
+
+  renderRecommendationCards(data.top_daily_pick, data.top_complex_pick);
+  renderRecommendationTable(data.models || []);
+  renderQuadrantChart(data.models || []);
+}
+
+function renderRecommendationCards(dailyPick, complexPick) {
+  const container = document.getElementById('recommend-cards-container');
+  if (!container) return;
+
+  if (!dailyPick || !complexPick) {
+    container.innerHTML = '<div style="grid-column: 1 / -1; color: var(--text-muted); padding: 24px; text-align: center;">当前尚未启用任何模型，请在第一页开启或添加模型。</div>';
+    return;
+  }
+
+  const dailyFeats = [
+    `⚡ 速度评级: ${dailyPick.speed === 'ultra-fast' ? '秒级高吞吐 (极速)' : '高速响应'}`,
+    `🎯 默认思考: ${escapeHtml(dailyPick.default_reasoning)}`,
+    `📦 上下文: ${(dailyPick.context_window / 1024).toFixed(0)}k tokens`,
+    `⚙️ 终端执行: ${escapeHtml(dailyPick.shell_type)}`
+  ];
+
+  const complexFeats = [
+    `🧠 架构推理: 深度多步推演`,
+    `📚 推荐思考: ${complexPick.default_reasoning === 'high' ? 'high (深度模式)' : '推荐开启 high/max'}`,
+    `🌐 上下文容量: ${(complexPick.context_window / 1024).toFixed(0)}k 全局代码理解`,
+    `🛠️ 终端执行: ${escapeHtml(complexPick.shell_type)}`
+  ];
+
+  container.innerHTML = `
+    <!-- 日常开发首选 -->
+    <div class="rec-card daily-pick">
+      <div class="rec-card-badge">⚡ 日常开发 · 首选推荐</div>
+      <div class="rec-card-header">
+        <div>
+          <div class="rec-model-title">${escapeHtml(dailyPick.display_name || dailyPick.slug)}</div>
+          <div class="rec-model-sub">${escapeHtml(dailyPick.slug)}</div>
+        </div>
+        <div class="rec-score-badge">
+          <span class="rec-score-num">${dailyPick.daily_score.toFixed(1)}</span>
+          <span class="rec-score-label">日常敏捷分</span>
+        </div>
+      </div>
+      <div class="rec-features">
+        ${dailyFeats.map(f => `<span class="rec-feat-item">${f}</span>`).join('')}
+      </div>
+      <ul class="rec-points">
+        ${(dailyPick.strengths || []).map(s => `<li>${escapeHtml(s)}</li>`).join('')}
+      </ul>
+      <div class="rec-advice-box">
+        <strong>💡 适用场景:</strong> ${escapeHtml(dailyPick.best_for || '高频单函数编写、单元测试补齐与日常缺陷快速排查')}
+      </div>
+    </div>
+
+    <!-- 复杂架构首选 -->
+    <div class="rec-card complex-pick">
+      <div class="rec-card-badge">🏛️ 复杂架构 · 首选推荐</div>
+      <div class="rec-card-header">
+        <div>
+          <div class="rec-model-title">${escapeHtml(complexPick.display_name || complexPick.slug)}</div>
+          <div class="rec-model-sub">${escapeHtml(complexPick.slug)}</div>
+        </div>
+        <div class="rec-score-badge">
+          <span class="rec-score-num">${complexPick.arch_score.toFixed(1)}</span>
+          <span class="rec-score-label">架构推理分</span>
+        </div>
+      </div>
+      <div class="rec-features">
+        ${complexFeats.map(f => `<span class="rec-feat-item">${f}</span>`).join('')}
+      </div>
+      <ul class="rec-points">
+        ${(complexPick.strengths || []).map(s => `<li>${escapeHtml(s)}</li>`).join('')}
+      </ul>
+      <div class="rec-advice-box">
+        <strong>💡 适用场景:</strong> ${escapeHtml(complexPick.best_for || '多模块全局重构、跨文件系统设计与复杂边界条件分析')}
+      </div>
+    </div>
+  `;
+}
+
+function renderRecommendationTable(models) {
+  const tbody = document.getElementById('recommend-tbody');
+  if (!tbody) return;
+
+  if (models.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="6" style="text-align: center; color: var(--text-muted); padding: 24px;">暂无已启用的模型</td></tr>';
+    return;
+  }
+
+  const sorted = [...models].sort((a, b) => (b.daily_score + b.arch_score) - (a.daily_score + a.arch_score));
+
+  tbody.innerHTML = sorted.map(m => {
+    const dailyWidth = Math.max(10, Math.min(100, ((m.daily_score - 60) / 40) * 100));
+    const archWidth = Math.max(10, Math.min(100, ((m.arch_score - 60) / 40) * 100));
+
+    let tagColor = 'var(--text)';
+    if (m.tag_class === 'flagship') tagColor = '#bc8cff';
+    else if (m.tag_class === 'daily') tagColor = '#3fb950';
+    else if (m.tag_class === 'arch') tagColor = '#58a6ff';
+
+    return `
+      <tr>
+        <td>
+          <div class="model-slug" style="font-weight: 600;">${escapeHtml(m.display_name || m.slug)}</div>
+          <div class="model-desc">${escapeHtml(m.slug)}</div>
+        </td>
+        <td>
+          <span class="tag" style="border-color: ${tagColor}; color: ${tagColor}; font-weight: 500;">
+            ${escapeHtml(m.tag)}
+          </span>
+        </td>
+        <td>
+          <div class="score-bar-container">
+            <div class="score-bar-bg" title="日常得分: ${m.daily_score.toFixed(1)}">
+              <div class="score-bar-fill daily" style="width: ${dailyWidth}%;"></div>
+            </div>
+            <span class="score-val" style="color: #3fb950;">${m.daily_score.toFixed(1)}</span>
+          </div>
+        </td>
+        <td>
+          <div class="score-bar-container">
+            <div class="score-bar-bg" title="架构得分: ${m.arch_score.toFixed(1)}">
+              <div class="score-bar-fill arch" style="width: ${archWidth}%;"></div>
+            </div>
+            <span class="score-val" style="color: #bc8cff;">${m.arch_score.toFixed(1)}</span>
+          </div>
+        </td>
+        <td>
+          <span class="tag reasoning">${escapeHtml(m.default_reasoning)}</span>
+          <small style="color: var(--text-muted); display: block; margin-top: 2px;">
+            ${(m.context_window / 1024).toFixed(0)}k 上下文
+          </small>
+        </td>
+        <td>
+          <div style="font-size: 12px; color: var(--text);">${escapeHtml(m.best_for || '-')}</div>
+        </td>
+      </tr>
+    `;
+  }).join('');
+}
+
+function renderQuadrantChart(models) {
+  const container = document.getElementById('quadrant-chart-container');
+  if (!container) return;
+
+  if (models.length === 0) {
+    container.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100%;color:var(--text-muted);">暂无模型数据</div>';
+    return;
+  }
+
+  // 1600 x 520 超宽幅布局，彻底撑满卡片宽度，横向纵向空间极大舒展，绝不拥挤
+  const W = 1600;
+  const H = 520;
+  const padL = 80;
+  const padR = 70;
+  const padT = 42;
+  const padB = 50;
+
+  const plotW = W - padL - padR;
+  const plotH = H - padT - padB;
+
+  const minVal = 75;
+  const maxVal = 100;
+
+  function scaleX(val) {
+    return padL + ((val - minVal) / (maxVal - minVal)) * plotW;
+  }
+  function scaleY(val) {
+    return H - padB - ((val - minVal) / (maxVal - minVal)) * plotH;
+  }
+
+  const splitX = scaleX(90);
+  const splitY = scaleY(90);
+
+  let svg = `
+    <svg viewBox="0 0 ${W} ${H}" width="100%" height="100%" xmlns="http://www.w3.org/2000/svg" style="display:block;">
+      <!-- 四象限背景底色 -->
+      <rect x="${splitX}" y="${padT}" width="${W - padR - splitX}" height="${splitY - padT}" fill="rgba(163, 113, 247, 0.06)"/>
+      <rect x="${padL}" y="${padT}" width="${splitX - padL}" height="${splitY - padT}" fill="rgba(88, 166, 255, 0.04)"/>
+      <rect x="${splitX}" y="${splitY}" width="${W - padR - splitX}" height="${H - padB - splitY}" fill="rgba(46, 160, 67, 0.05)"/>
+      <rect x="${padL}" y="${splitY}" width="${splitX - padL}" height="${H - padB - splitY}" fill="rgba(110, 118, 129, 0.03)"/>
+
+      <!-- 象限水印说明 -->
+      <text x="${W - padR - 16}" y="${padT + 24}" fill="#bc8cff" font-size="13" font-weight="600" text-anchor="end" opacity="0.75">👑 全能旗舰区 (Flagship)</text>
+      <text x="${padL + 16}" y="${padT + 24}" fill="#58a6ff" font-size="13" font-weight="600" text-anchor="start" opacity="0.75">🏛️ 深度推理架构区 (Deep Arch)</text>
+      <text x="${W - padR - 16}" y="${H - padB - 16}" fill="#3fb950" font-size="13" font-weight="600" text-anchor="end" opacity="0.75">⚡ 日常敏捷极速区 (Agile Coding)</text>
+      <text x="${padL + 16}" y="${H - padB - 16}" fill="#8b949e" font-size="12" font-weight="500" text-anchor="start" opacity="0.6">🔹 通用基础区 (Baseline)</text>
+
+      <!-- 网格参考线 -->
+      <line x1="${padL}" y1="${splitY}" x2="${W - padR}" y2="${splitY}" stroke="#30363d" stroke-dasharray="4,4" stroke-width="1.5"/>
+      <line x1="${splitX}" y1="${padT}" x2="${splitX}" y2="${H - padB}" stroke="#30363d" stroke-dasharray="4,4" stroke-width="1.5"/>
+
+      <!-- 坐标轴 -->
+      <line x1="${padL}" y1="${H - padB}" x2="${W - padR}" y2="${H - padB}" stroke="#484f58" stroke-width="1.5"/>
+      <line x1="${padL}" y1="${padT}" x2="${padL}" y2="${H - padB}" stroke="#484f58" stroke-width="1.5"/>
+
+      <!-- 轴标题与刻度 -->
+      <text x="${padL + plotW / 2}" y="${H - 14}" fill="#8b949e" font-size="13" font-weight="600" text-anchor="middle">日常开发敏捷度 (Daily Agility Score) →</text>
+      <text x="${22}" y="${padT + plotH / 2}" fill="#8b949e" font-size="13" font-weight="600" text-anchor="middle" transform="rotate(-90, 22, ${padT + plotH / 2})">复杂架构推理深度 (Architecture Score) →</text>
+  `;
+
+  [80, 85, 90, 95, 100].forEach(val => {
+    const xPos = scaleX(val);
+    const yPos = scaleY(val);
+    svg += `
+      <text x="${xPos}" y="${H - padB + 20}" fill="#6e7681" font-size="12" font-family="monospace" text-anchor="middle">${val}</text>
+      <text x="${padL - 12}" y="${yPos + 4}" fill="#6e7681" font-size="12" font-family="monospace" text-anchor="end">${val}</text>
+    `;
+  });
+
+  const renderedNodes = models.map((m, idx) => {
+    const cx = scaleX(Math.max(76, Math.min(99, m.daily_score)));
+    const cy = scaleY(Math.max(76, Math.min(99, m.arch_score)));
+
+    let dotColor = '#58a6ff';
+    if (m.tag_class === 'flagship') dotColor = '#bc8cff';
+    else if (m.tag_class === 'daily') dotColor = '#3fb950';
+
+    return {
+      model: m,
+      cx,
+      cy,
+      dotColor,
+      label: m.display_name || m.slug,
+      idx
+    };
+  });
+
+  // 初始化默认文字位置
+  renderedNodes.forEach(n => {
+    n.textAnchor = 'middle';
+    n.textX = n.cx;
+    n.textY = (n.cy < padT + 35) ? (n.cy + 22) : (n.cy - 13);
+  });
+
+  // 密集区域智能防遮挡排斥（支持左、中、右、上、下多向发散）
+  renderedNodes.sort((a, b) => a.cx - b.cx);
+  for (let i = 0; i < renderedNodes.length; i++) {
+    for (let j = i + 1; j < renderedNodes.length; j++) {
+      const a = renderedNodes[i];
+      const b = renderedNodes[j];
+      const dist = Math.hypot(a.cx - b.cx, a.cy - b.cy);
+      if (dist < 85) {
+        if (Math.abs(a.cx - b.cx) < 25) {
+          // X 坐标接近（纵向密集），上下错开
+          if (a.cy < b.cy) {
+            a.textY = a.cy - 13;
+            b.textY = b.cy + 22;
+          } else {
+            b.textY = b.cy - 13;
+            a.textY = a.cy + 22;
+          }
+        } else {
+          // 横向密集，左侧点向左偏移锚定 end，右侧点向右偏移锚定 start，中间点向下
+          if (j - i >= 2) {
+            const mid = renderedNodes[i + 1];
+            mid.textAnchor = 'middle';
+            mid.textY = mid.cy + 24;
+          }
+          a.textAnchor = 'end';
+          a.textX = a.cx - 10;
+          a.textY = a.cy + 4;
+          b.textAnchor = 'start';
+          b.textX = b.cx + 10;
+          b.textY = b.cy + 4;
+        }
+      }
+    }
+  }
+
+  renderedNodes.forEach(n => {
+    const label = escapeHtml(n.label);
+    const m = n.model;
+    const tooltip = `${label}&#10;日常敏捷: ${m.daily_score.toFixed(1)}&#10;复杂架构: ${m.arch_score.toFixed(1)}&#10;上下文: ${Math.round(m.context_window/1024)}k&#10;推荐: ${escapeHtml(m.best_for || '')}`;
+
+    svg += `
+      <g class="quadrant-node" style="cursor: pointer;">
+        <circle cx="${n.cx}" cy="${n.cy}" r="7" fill="${n.dotColor}" stroke="#0d1117" stroke-width="2.5">
+          <title>${tooltip}</title>
+        </circle>
+        <text x="${n.textX}" y="${n.textY}" fill="#f0f6fc" font-size="12" font-weight="500" text-anchor="${n.textAnchor}" style="pointer-events: none; text-shadow: 0 1px 4px rgba(0,0,0,0.95), 0 0 3px #000;">
+          ${label}
+        </text>
+      </g>
+    `;
+  });
+
+  svg += '</svg>';
+  container.innerHTML = svg;
+}
+
 function renderUpstreamTable() {
   const filter = (document.getElementById('upstream-search').value || '').toLowerCase().trim();
   const tbody = document.getElementById('upstream-tbody');
@@ -877,12 +1887,33 @@ function renderUpstreamTable() {
     return slug && slug.toLowerCase().includes(filter);
   });
 
+  // 同一个归属展示在一起，排序按照归属首字母升序 (A-Z)；若归属相同则按模型标识升序
+  upModels.sort((a, b) => {
+    const ownerA = (a.owned_by || '').toLowerCase().trim();
+    const ownerB = (b.owned_by || '').toLowerCase().trim();
+    if (ownerA !== ownerB) {
+      if (!ownerA) return 1;
+      if (!ownerB) return -1;
+      return ownerA.localeCompare(ownerB);
+    }
+    const slugA = (a.id || a.slug || '').toLowerCase();
+    const slugB = (b.id || b.slug || '').toLowerCase();
+    return slugA.localeCompare(slugB);
+  });
+
   if (upModels.length === 0) {
     tbody.innerHTML = '<tr><td colspan="5" style="text-align: center; color: var(--text-muted); padding: 24px;">未发现可用模型源或无搜索匹配结果</td></tr>';
+    renderPagination('upstream-pagination', 'upstream', 0);
     return;
   }
 
-  upModels.forEach(up => {
+  const conf = paginationState.upstream;
+  const totalItems = upModels.length;
+  const totalPages = Math.max(1, Math.ceil(totalItems / conf.pageSize));
+  if (conf.page > totalPages) conf.page = totalPages;
+  const pagedUpModels = upModels.slice((conf.page - 1) * conf.pageSize, conf.page * conf.pageSize);
+
+  pagedUpModels.forEach(up => {
     const slug = up.id || up.slug;
     const isEnabled = !!configuredMap[slug];
     const cfg = configuredMap[slug];
@@ -899,12 +1930,14 @@ function renderUpstreamTable() {
       <td>${cfg ? escapeHtml(cfg.display_name || '-') : '<span style="color: var(--text-muted);">-</span>'}</td>
       <td style="text-align: right;">
         ${isEnabled
-          ? `<button class="btn sm blue" onclick="openEditModelModal('${slug}')">编辑配置</button>`
-          : `<button class="btn sm primary" onclick="quickEnableUpstream('${slug}')">+ 开启到 Codex</button>`}
+          ? `<button class="btn sm blue" data-action="edit" data-slug="${escapeHtml(slug)}">编辑配置</button>`
+          : `<button class="btn sm primary" data-action="enable" data-slug="${escapeHtml(slug)}">+ 开启到 Codex</button>`}
       </td>
     `;
     tbody.appendChild(tr);
   });
+
+  renderPagination('upstream-pagination', 'upstream', totalItems);
 }
 
 function quickEnableUpstream(slug) {
@@ -948,10 +1981,7 @@ function openAddModelModal(prefilledSlug = '') {
   document.getElementById('edit-visibility').value = 'list';
 
   onTemplateChange();
-  if (document.activeElement && typeof document.activeElement.blur === 'function') {
-    document.activeElement.blur();
-  }
-  document.getElementById('edit-modal').classList.add('open');
+  openModal();
 }
 
 function formatDisplayName(slug) {
@@ -1003,14 +2033,35 @@ function openEditModelModal(slug) {
     cb.checked = supported.includes(cb.value);
   });
 
+  openModal();
+}
+
+let lastFocusedElement = null;
+
+function openModal(focusId = null) {
+  lastFocusedElement = document.activeElement;
   if (document.activeElement && typeof document.activeElement.blur === 'function') {
     document.activeElement.blur();
   }
-  document.getElementById('edit-modal').classList.add('open');
+  const modal = document.getElementById('edit-modal');
+  modal.classList.add('open');
+  if (focusId) {
+    const focusEl = document.getElementById(focusId);
+    if (focusEl && !window.matchMedia('(pointer: coarse)').matches) {
+      setTimeout(() => {
+        if (modal.classList.contains('open')) focusEl.focus();
+      }, 50);
+    }
+  }
 }
 
 function closeEditModal() {
-  document.getElementById('edit-modal').classList.remove('open');
+  const modal = document.getElementById('edit-modal');
+  if (!modal.classList.contains('open')) return;
+  modal.classList.remove('open');
+  if (lastFocusedElement && typeof lastFocusedElement.focus === 'function') {
+    lastFocusedElement.focus();
+  }
 }
 
 function handleBackdropClick(e) {
@@ -1022,6 +2073,31 @@ function handleBackdropClick(e) {
 document.addEventListener('keydown', function(e) {
   if (e.key === 'Escape') {
     closeEditModal();
+    return;
+  }
+  const modal = document.getElementById('edit-modal');
+  if (e.key === 'Tab' && modal.classList.contains('open')) {
+    const focusable = [...modal.querySelectorAll('button, input:not([type="hidden"]), select, textarea, [tabindex]:not([tabindex="-1"])')]
+      .filter(el => !el.disabled && el.offsetParent !== null);
+    if (focusable.length === 0) return;
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+    if (!modal.contains(document.activeElement)) {
+      e.preventDefault();
+      if (e.shiftKey) {
+        last.focus();
+      } else {
+        first.focus();
+      }
+      return;
+    }
+    if (e.shiftKey && document.activeElement === first) {
+      e.preventDefault();
+      last.focus();
+    } else if (!e.shiftKey && document.activeElement === last) {
+      e.preventDefault();
+      first.focus();
+    }
   }
 });
 
@@ -1179,7 +2255,8 @@ async function loadBackups() {
     const res = await fetch('/api/backups');
     const data = await res.json();
     state.backups = data.backups || [];
-    document.getElementById('tab-backups-num').textContent = state.backups.length;
+    const tabBk = document.getElementById('tab-backups-num');
+    if (tabBk) tabBk.textContent = state.backups.length;
     renderBackupsTable();
   } catch (err) {
     console.error('加载备份失败', err);
@@ -1189,11 +2266,20 @@ async function loadBackups() {
 function renderBackupsTable() {
   const tbody = document.getElementById('backups-tbody');
   tbody.innerHTML = '';
-  if (!state.backups || state.backups.length === 0) {
+  const backups = state.backups || [];
+  if (backups.length === 0) {
     tbody.innerHTML = '<tr><td colspan="4" style="text-align: center; color: var(--text-muted); padding: 20px;">暂无备份记录</td></tr>';
+    renderPagination('backups-pagination', 'backups', 0);
     return;
   }
-  state.backups.forEach(b => {
+
+  const conf = paginationState.backups;
+  const totalItems = backups.length;
+  const totalPages = Math.max(1, Math.ceil(totalItems / conf.pageSize));
+  if (conf.page > totalPages) conf.page = totalPages;
+  const pagedBackups = backups.slice((conf.page - 1) * conf.pageSize, conf.page * conf.pageSize);
+
+  pagedBackups.forEach(b => {
     const tr = document.createElement('tr');
     const szKb = (b.size / 1024).toFixed(1) + ' KB';
     tr.innerHTML = `
@@ -1201,11 +2287,13 @@ function renderBackupsTable() {
       <td><span class="badge">${szKb}</span></td>
       <td><span class="model-slug" style="font-size: 11px;">${escapeHtml(b.filename)}</span></td>
       <td style="text-align: right;">
-        <button class="btn sm blue" onclick="restoreBackup('${escapeHtml(b.filename)}')">还原此版本</button>
+        <button class="btn sm blue" data-action="restore" data-filename="${escapeHtml(b.filename)}">还原此版本</button>
       </td>
     `;
     tbody.appendChild(tr);
   });
+
+  renderPagination('backups-pagination', 'backups', totalItems);
 }
 
 async function restoreBackup(filename) {
@@ -1242,8 +2330,96 @@ function escapeHtml(str) {
   return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
-// 初始化加载
+function setupActions() {
+  if (document.body.hasAttribute('data-actions-ready')) return;
+  document.body.setAttribute('data-actions-ready', 'true');
+  document.addEventListener('click', e => {
+    const btn = e.target.closest('[data-action]');
+    if (!btn) return;
+    const action = btn.dataset.action;
+    if (action === 'move') {
+      moveModel(btn.dataset.slug, btn.dataset.direction);
+    } else if (action === 'edit') {
+      openEditModelModal(btn.dataset.slug);
+    } else if (action === 'delete') {
+      confirmDeleteModel(btn.dataset.slug);
+    } else if (action === 'enable') {
+      quickEnableUpstream(btn.dataset.slug);
+    } else if (action === 'restore') {
+      restoreBackup(btn.dataset.filename);
+    }
+  });
+}
+
+function applyDetectedUpstream(cfg) {
+  if (!cfg) return;
+  const urlEl = document.getElementById('upstream-url');
+  const keyEl = document.getElementById('upstream-key');
+  if (urlEl && !urlEl.dataset.userEdited) {
+    urlEl.value = cfg.url || '';
+  }
+  if (keyEl && !keyEl.dataset.userEdited) {
+    keyEl.value = cfg.key || '';
+  }
+}
+
+function initFromPreloadedData() {
+  const detectEl = document.getElementById('initial-detected-upstream');
+  if (detectEl && detectEl.textContent && !detectEl.textContent.includes('__CODEX_DETECTED_UPSTREAM__')) {
+    try {
+      const detectData = JSON.parse(detectEl.textContent);
+      applyDetectedUpstream(detectData);
+    } catch (e) {
+      console.warn('Initial detected upstream parse error:', e);
+    }
+  }
+
+  const catEl = document.getElementById('initial-catalog-data');
+  if (catEl && catEl.textContent && !catEl.textContent.includes('__CODEX_CATALOG_DATA__')) {
+    try {
+      const data = JSON.parse(catEl.textContent);
+      if (data && data.models && Array.isArray(data.models)) {
+        state.catalog = data;
+        document.getElementById('configured-count-badge').textContent = '已启用: ' + state.catalog.models.length;
+        const tabConf = document.getElementById('tab-configured-num');
+        if (tabConf) tabConf.textContent = state.catalog.models.length;
+        renderConfiguredTable();
+      }
+    } catch (e) {
+      console.warn('Initial catalog parse error:', e);
+    }
+  }
+
+  const upEl = document.getElementById('initial-upstream-data');
+  if (upEl && upEl.textContent && !upEl.textContent.includes('__CODEX_UPSTREAM_DATA__')) {
+    try {
+      const upData = JSON.parse(upEl.textContent);
+      const list = upData.upstream_models || (Array.isArray(upData) ? upData : []);
+      if (list && list.length > 0) {
+        state.upstreamModels = list;
+        state.comparison = upData.comparison || null;
+        document.getElementById('upstream-count-badge').textContent = '上游可用: ' + state.upstreamModels.length;
+        const tabUps = document.getElementById('tab-upstream-num');
+        if (tabUps) tabUps.textContent = state.upstreamModels.length;
+        renderUpstreamTable();
+      }
+    } catch (e) {
+      console.warn('Initial upstream parse error:', e);
+    }
+  }
+}
+
+// 优先从内嵌静态数据瞬间同步渲染（0毫秒），再发起异步更新
+initFromPreloadedData();
+setupTabs();
+setupActions();
 loadAllData();
+
+window.addEventListener('popstate', () => {
+  const name = new URL(window.location.href).searchParams.get('tab');
+  const tab = document.querySelector(`.tab-btn[data-tab="${name}"]`);
+  if (tab) switchTab(name, tab);
+});
 </script>
 </body>
 </html>
@@ -1273,9 +2449,12 @@ def get_html_bytes(catalog_data: Dict[str, Any], catalog_path: str = None) -> by
     cat_json = json.dumps(catalog_data, ensure_ascii=False, separators=(",", ":"))
     up_cache = core.load_upstream_cache(catalog_path)
     up_json = json.dumps(up_cache, ensure_ascii=False, separators=(",", ":")) if up_cache else "{}"
+    detected_cfg = core.detect_codex_upstream_config()
+    detected_json = json.dumps(detected_cfg, ensure_ascii=False, separators=(",", ":"))
 
     html = _CACHED_HTML_TEMPLATE.replace('"__CODEX_CATALOG_DATA__"', cat_json)
     html = html.replace('"__CODEX_UPSTREAM_DATA__"', up_json)
+    html = html.replace('"__CODEX_DETECTED_UPSTREAM__"', detected_json)
     return html.encode("utf-8")
 
 
@@ -1337,9 +2516,11 @@ class CatalogRequestHandler(http.server.BaseHTTPRequestHandler):
         if path == "/api/catalog":
             try:
                 cat = core.load_catalog(self.catalog_path)
+                detected = core.detect_codex_upstream_config()
                 self.send_json(200, {
                     "path": core.get_catalog_path(self.catalog_path),
-                    "catalog": cat
+                    "catalog": cat,
+                    "detected_upstream": detected
                 })
             except Exception as e:
                 self.send_json(500, {"error": str(e)})
@@ -1349,6 +2530,16 @@ class CatalogRequestHandler(http.server.BaseHTTPRequestHandler):
             try:
                 backups = core.list_backups()
                 self.send_json(200, {"backups": backups})
+            except Exception as e:
+                self.send_json(500, {"error": str(e)})
+            return
+
+        if path == "/api/benchmark/recommend":
+            try:
+                cat = core.load_catalog(self.catalog_path)
+                benchmarks = core.get_or_update_benchmarks(self.catalog_path)
+                result = core.evaluate_catalog_models(cat, benchmarks)
+                self.send_json(200, result)
             except Exception as e:
                 self.send_json(500, {"error": str(e)})
             return
@@ -1363,8 +2554,12 @@ class CatalogRequestHandler(http.server.BaseHTTPRequestHandler):
         if path == "/api/models/fetch":
             try:
                 body = self.read_body_json()
-                url = body.get("url") or core.DEFAULT_UPSTREAM_URL
-                api_key = body.get("api_key") or core.DEFAULT_API_KEY
+                detected = core.detect_codex_upstream_config()
+                url = (body.get("url") or detected.get("url") or "").strip()
+                api_key = (body.get("api_key") or detected.get("key") or "").strip()
+                if not url:
+                    self.send_json(400, {"error": "未配置模型源 API 地址，请在输入框填写或在 codex 配置文件中设置"})
+                    return
                 upstream_models = core.fetch_upstream_models(url, api_key)
                 cat = core.load_catalog(self.catalog_path)
                 comp = core.compare_models(cat, upstream_models)
@@ -1440,6 +2635,16 @@ class CatalogRequestHandler(http.server.BaseHTTPRequestHandler):
             try:
                 backup_path = core.create_backup(self.catalog_path)
                 self.send_json(200, {"success": True, "path": backup_path})
+            except Exception as e:
+                self.send_json(500, {"error": str(e)})
+            return
+
+        if path == "/api/benchmark/refresh":
+            try:
+                cat = core.load_catalog(self.catalog_path)
+                benchmarks = core.get_or_update_benchmarks(self.catalog_path, force_refresh=True)
+                result = core.evaluate_catalog_models(cat, benchmarks)
+                self.send_json(200, result)
             except Exception as e:
                 self.send_json(500, {"error": str(e)})
             return
