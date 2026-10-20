@@ -12,12 +12,15 @@ $results = @()
 foreach ($id in ($Ids -split "," | ForEach-Object { $_.Trim() } | Where-Object { $_ })) {
   $output = & node $CodeBuddy --model $id -p "Say OK only." --output-format text --dangerously-skip-permissions 2>&1
   $text = ($output | Out-String)
-  $available = $text -match "(?m)^OK\s*$" -or $text -match "\bOK\b"
-  $unavailable = $text -match "service info not found"
+  # Use anchored matches: stderr paths such as "At C:\...\probe.ps1" contain "OK"-like substrings
+  # when matched case-insensitively, and every transport error is a failure regardless of wording.
+  $available = $text -cmatch "(?m)^OK[.!]?\s*$"
+  $unavailable = $text -match "service info not found" -or $text -match "model not allowed" -or $text -match "(?m)^\s*\+?\s*(At |CategoryInfo|FullyQualifiedErrorId|node\.exe :|node :|\+)" 
   $results += [pscustomobject]@{
     id = $id
     available = ($available -and -not $unavailable)
     unavailable_error = $unavailable
+    exit_code = $LASTEXITCODE
     output = $text.Trim()
   }
 }

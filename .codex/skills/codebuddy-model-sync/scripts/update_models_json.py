@@ -52,6 +52,13 @@ METADATA_KEYS = {
     "supportedOutputModalities",
 }
 
+# The CodeBuddy gateway accepts these effort levels for account models and
+# returns reasoning_content for each; this matches the live-verified set already
+# used by the existing CodeBuddy entries.
+CODEBUDDY_THINKING = collections.OrderedDict(
+    [("levels", ["low", "medium", "high", "max", "none"]), ("zero_allowed", True)]
+)
+
 
 def parse_ids(value: str | None) -> list[str]:
     if not value:
@@ -65,7 +72,23 @@ def load_models(path: pathlib.Path):
 
 
 def discovered_index(discover: dict) -> dict[str, dict]:
-    return {entry["id"]: entry for entry in discover.get("models", []) if entry.get("id")}
+    """Merge product metadata with the account-scoped cloud catalog.
+
+    The cloud catalog is authoritative for account entitlements and wins on
+    shared fields; product metadata fills gaps. Entries with no reliable
+    metadata at all are omitted so canonical_entry keeps existing fields.
+    """
+    merged: dict[str, dict] = {}
+    for entry in discover.get("models", []):
+        if entry.get("id"):
+            merged[entry["id"]] = dict(entry)
+    for entry in discover.get("cloud_models", []):
+        model_id = entry.get("id")
+        if not model_id:
+            continue
+        base = merged.get(model_id, {})
+        merged[model_id] = {**base, **{k: v for k, v in entry.items() if v is not None}}
+    return merged
 
 
 def canonical_entry(existing: dict, metadata: dict, model_id: str) -> collections.OrderedDict:
@@ -74,6 +97,13 @@ def canonical_entry(existing: dict, metadata: dict, model_id: str) -> collection
     for key, value in existing.items():
         if key not in CANONICAL_ORDER:
             entry[key] = value
+    # Only fill thinking config for new entries; existing entries were verified
+    # against the live gateway and must keep their declared levels.
+    if "thinking" not in existing:
+        entry["thinking"] = {
+            "levels": list(CODEBUDDY_THINKING["levels"]),
+            "zero_allowed": CODEBUDDY_THINKING["zero_allowed"],
+        }
     base = {
         "id": model_id,
         "object": existing.get("object", "model"),
@@ -99,7 +129,7 @@ def canonical_entry(existing: dict, metadata: dict, model_id: str) -> collection
 
 
 def metadata_from_discovered(item: dict) -> dict:
-    return {
+    metadata = {
         "display_name": item.get("display_name"),
         "name": item.get("id"),
         "description": item.get("description"),
@@ -108,6 +138,11 @@ def metadata_from_discovered(item: dict) -> dict:
         "supportedInputModalities": item.get("supportedInputModalities"),
         "supportedOutputModalities": item.get("supportedOutputModalities"),
     }
+    # The CodeBuddy gateway reports an exact 1048576-token prompt ceiling while
+    # catalogs round it to 1000000. Keep the already-verified exact value.
+    if metadata.get("context_length") == 1000000 and item.get("id"):
+        metadata["context_length"] = 1048576
+    return metadata
 
 
 def write_models(path: pathlib.Path, data) -> None:

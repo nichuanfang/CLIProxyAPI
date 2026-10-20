@@ -17,12 +17,18 @@ Prints JSON:
   "product": {"commit": "...", "date": "...", "endpoint": "..."},
   "models": [...],
   "agent_models": {"cli": [...]},
-  "account_supported_models": [...]
+  "account_supported_models": [...],
+  "cloud_models": [...],
+  "cloud_cache": {...}
 }
 
 "account_supported_models" is the authoritative list the CLI returns for the
 signed-in account (captured from the "--model <invalid>" error). Prefer it over
 "agent_models.cli" when deciding which IDs the CLI actually accepts.
+
+"cloud_models" comes from the CLI's cached copy of the account-scoped cloud
+catalog. It carries entries missing from product.internal.json (for example
+step-5-preview and space-bunny) and account-specific context windows.
 """
 
 from __future__ import annotations
@@ -35,6 +41,7 @@ import subprocess
 import sys
 
 HOME = pathlib.Path.home()
+CLOUD_CACHE_GLOB = "local_storage/entry_*.info"
 
 
 def candidate_roots(explicit: str | None) -> list[pathlib.Path]:
@@ -154,6 +161,28 @@ def normalize_model(raw: dict) -> dict:
     }
 
 
+def cloud_catalog(home: pathlib.Path) -> tuple[list[dict], dict]:
+    """Return the newest cached cloud model catalog for the signed-in account."""
+    best: tuple[float, list[dict], str] | None = None
+    for path in (home / ".codebuddy").glob(CLOUD_CACHE_GLOB):
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+            data = payload[0].get("data") or {}
+            models = data.get("models")
+            if not isinstance(models, list) or not models:
+                continue
+        except Exception:
+            continue
+        stamp = path.stat().st_mtime
+        if best is None or stamp > best[0]:
+            best = (stamp, models, str(path))
+    if best is None:
+        return [], {}
+    _, models, path = best
+    normalized = [normalize_model(m) for m in models if isinstance(m, dict) and m.get("id")]
+    return normalized, {"path": path, "model_count": len(normalized)}
+
+
 def main() -> int:
     explicit = sys.argv[1] if len(sys.argv) > 1 else None
     last_error = None
@@ -172,6 +201,7 @@ def main() -> int:
                 for m in product.get("models", [])
                 if isinstance(m, dict) and m.get("id")
             ]
+            cloud_models, cloud_cache = cloud_catalog(HOME)
             result = {
                 "package_root": str(root),
                 "cli_version": cli_version(root),
@@ -183,6 +213,8 @@ def main() -> int:
                 "models": models,
                 "agent_models": agent_models,
                 "account_supported_models": account_supported_models(root),
+                "cloud_models": cloud_models,
+                "cloud_cache": cloud_cache,
             }
             print(json.dumps(result, ensure_ascii=False, indent=2))
             return 0

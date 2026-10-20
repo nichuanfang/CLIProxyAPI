@@ -369,7 +369,19 @@ func TestGetDevinModelsFallback(t *testing.T) {
 }
 
 func TestCodeBuddyModels(t *testing.T) {
-	want := []string{"deepseek-v4.1-flash", "glm-5.3-flashx", "kimi-k3-2", "glm-5.3", "space-bunny"}
+	want := []string{
+		"hy4-preview",
+		"hy3",
+		"hy3-x",
+		"step-5-preview",
+		"space-bunny",
+		"deepseek-v4.1-flash",
+		"glm-5.3",
+		"glm-5.3-flash",
+		"glm-5.3-flashx",
+		"minimax-m3-pay",
+		"deepseek-v4-pro",
+	}
 	models := GetCodeBuddyModels()
 	if len(models) != len(want) {
 		t.Fatalf("model count = %d, want %d", len(models), len(want))
@@ -377,6 +389,12 @@ func TestCodeBuddyModels(t *testing.T) {
 	for i, model := range models {
 		if model == nil || model.ID != want[i] {
 			t.Fatalf("models[%d] = %#v, want %s", i, model, want[i])
+		}
+		if model.ContextLength <= 0 || model.MaxCompletionTokens <= 0 {
+			t.Errorf("models[%d] (%s) missing token limits: context=%d output=%d", i, model.ID, model.ContextLength, model.MaxCompletionTokens)
+		}
+		if model.Thinking == nil || len(model.Thinking.Levels) == 0 {
+			t.Errorf("models[%d] (%s) missing thinking levels", i, model.ID)
 		}
 	}
 	channel := GetStaticModelDefinitionsByChannel("codebuddy")
