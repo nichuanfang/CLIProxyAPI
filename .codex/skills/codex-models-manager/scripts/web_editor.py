@@ -538,6 +538,59 @@ input[type="text"]:focus-visible, input[type="number"]:focus-visible, select:foc
   resize: vertical;
 }
 
+.raw-split {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 12px;
+}
+
+.split-pane {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.split-pane .toolbar {
+  gap: 8px;
+}
+
+.pane-title {
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.pane-title small {
+  margin-left: 8px;
+  font-weight: 400;
+}
+
+.pane-meta {
+  margin-left: 8px;
+  color: var(--text-muted);
+  font-weight: 400;
+}
+
+.pane-hint {
+  margin-top: 6px;
+  color: var(--text-muted);
+  font-size: 11px;
+  line-height: 1.5;
+  word-break: break-all;
+}
+
+.split-editor {
+  width: 100%;
+  height: 520px;
+  resize: vertical;
+}
+
+@media (max-width: 1100px) {
+  .raw-split {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
 .skip-link {
   position: absolute;
   left: 12px;
@@ -927,14 +980,29 @@ input[type="text"]:focus-visible, input[type="number"]:focus-visible, select:foc
 
   <!-- Tab 3: 原始 JSON 编辑 -->
   <div id="tab-raw" class="tab-content" role="tabpanel" aria-labelledby="tab-btn-raw" tabindex="0" style="display: none;">
-    <div class="toolbar">
-      <span style="color: var(--text-muted); font-size: 12px;">直接修改 default.json 完整内容。保存前会自动创建完整安全备份。</span>
-      <div>
-        <button class="btn sm" onclick="formatRawJson()">格式化 JSON</button>
-        <button class="btn sm primary" onclick="saveRawJson()">保存并应用</button>
-      </div>
+    <div class="raw-split">
+      <section class="split-pane template-pane">
+        <div class="toolbar">
+          <span class="pane-title">占位符 {template} 内容<span class="pane-meta" id="template-meta"></span></span>
+          <div>
+            <button class="btn sm" onclick="reloadTemplateText()">重新载入</button>
+            <button class="btn sm primary" onclick="saveTemplateText()">保存占位符内容</button>
+          </div>
+        </div>
+        <textarea id="template-text" class="json-editor split-editor" aria-label="占位符指令内容" spellcheck="false"></textarea>
+        <div class="pane-hint" id="template-hint"></div>
+      </section>
+      <section class="split-pane json-pane">
+        <div class="toolbar">
+          <span class="pane-title">default.json<small>保存前会自动创建完整安全备份</small></span>
+          <div>
+            <button class="btn sm" onclick="formatRawJson()">格式化 JSON</button>
+            <button class="btn sm primary" onclick="saveRawJson()">保存并应用</button>
+          </div>
+        </div>
+        <textarea id="raw-json-text" class="json-editor split-editor" aria-label="模型目录 JSON" spellcheck="false"></textarea>
+      </section>
     </div>
-    <textarea id="raw-json-text" class="json-editor" aria-label="模型目录 JSON" spellcheck="false"></textarea>
   </div>
 
   <!-- Tab 4: 备份管理 -->
@@ -1136,6 +1204,8 @@ input[type="text"]:focus-visible, input[type="number"]:focus-visible, select:foc
 let state = {
   catalog: { models: [] },
   catalogPath: '',
+  templateText: '',
+  templateModels: [],
   upstreamModels: [],
   comparison: null,
   backups: []
@@ -1270,6 +1340,7 @@ function switchTab(name, btn) {
   }
   if (name === 'raw') {
     document.getElementById('raw-json-text').value = JSON.stringify(state.catalog, null, 2);
+    renderTemplatePane();
   } else if (name === 'backups') {
     loadBackups();
   } else if (name === 'recommend') {
@@ -1315,6 +1386,9 @@ async function loadAllData() {
     if (data.error) throw new Error(data.error);
     state.catalog = data.catalog;
     state.catalogPath = data.path;
+    state.templateText = data.template_text || '';
+    state.templateModels = data.template_models || [];
+    renderTemplatePane();
 
     document.getElementById('catalog-path-badge').textContent = '路径: ' + (data.path || 'default.json');
     document.getElementById('configured-count-badge').textContent = '已启用: ' + state.catalog.models.length;
@@ -2211,6 +2285,70 @@ async function movePriority(slug, direction) {
   }
 }
 
+function renderTemplatePane() {
+  const ta = document.getElementById('template-text');
+  const meta = document.getElementById('template-meta');
+  const hint = document.getElementById('template-hint');
+  if (!ta || !meta || !hint) return;
+
+  const text = state.templateText || '';
+  // Fill on first render or when the source changed underneath us.
+  if (!ta.value || ta.dataset.synced !== text) {
+    if (document.activeElement !== ta) {
+      ta.value = text;
+      ta.dataset.synced = text;
+    }
+  }
+
+  const models = state.templateModels || [];
+  meta.textContent = text ? `${text.length} 字符` : '';
+  hint.textContent = models.length ? '引用模型：' + models.join('、') : '';
+  hint.style.display = models.length ? '' : 'none';
+}
+
+async function reloadTemplateText() {
+  try {
+    const res = await fetch('/api/catalog');
+    const data = await res.json();
+    if (data.error) throw new Error(data.error);
+    state.templateText = data.template_text || '';
+    state.templateModels = data.template_models || [];
+    const ta = document.getElementById('template-text');
+    if (ta) {
+      ta.value = state.templateText;
+      ta.dataset.synced = state.templateText;
+    }
+    renderTemplatePane();
+    showToast('已重新载入占位符内容', 'success');
+  } catch (err) {
+    showToast('载入失败: ' + err.message, 'error');
+  }
+}
+
+async function saveTemplateText() {
+  const ta = document.getElementById('template-text');
+  if (!ta) return;
+  const text = ta.value;
+  if (!text.trim()) {
+    showToast('占位符内容不能为空', 'error');
+    return;
+  }
+  try {
+    const res = await fetch('/api/template', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text })
+    });
+    const data = await res.json();
+    if (data.error) throw new Error(data.error);
+    showToast(`占位符内容已保存并写入 ${(state.templateModels || []).length} 个模型`, 'success');
+    await loadAllData();
+    renderTemplatePane();
+  } catch (err) {
+    showToast('保存失败: ' + err.message, 'error');
+  }
+}
+
 function formatRawJson() {
   const textarea = document.getElementById('raw-json-text');
   try {
@@ -2431,6 +2569,24 @@ _CACHED_HTML_TEMPLATE = None
 _LAST_HTML_MTIME = 0
 
 
+def _shared_prompt(raw_catalog: Dict[str, Any]) -> str:
+    """
+    The instruction text shared by the most models, used to seed the placeholder
+    editor before any model references {template}.
+    """
+    counts: Dict[str, int] = {}
+    for model in raw_catalog.get("models", []):
+        messages = model.get("model_messages")
+        if not isinstance(messages, dict):
+            continue
+        text = messages.get("instructions_template")
+        if isinstance(text, str) and text and text != core.DEFAULT_TEMPLATE_PLACEHOLDER:
+            counts[text] = counts.get(text, 0) + 1
+    if not counts:
+        return ""
+    return max(counts.items(), key=lambda kv: kv[1])[0]
+
+
 def get_html_bytes(catalog_data: Dict[str, Any], catalog_path: str = None) -> bytes:
     global _CACHED_HTML_TEMPLATE, _LAST_HTML_MTIME
     if os.path.exists(HTML_PATH):
@@ -2496,7 +2652,7 @@ class CatalogRequestHandler(http.server.BaseHTTPRequestHandler):
 
         if path == "/" or path == "/index.html":
             try:
-                cat = core.load_catalog(self.catalog_path)
+                cat = core.load_catalog_for_editing(self.catalog_path)["view"]
             except Exception:
                 cat = {"models": []}
             html_bytes = get_html_bytes(cat, self.catalog_path)
@@ -2515,11 +2671,18 @@ class CatalogRequestHandler(http.server.BaseHTTPRequestHandler):
 
         if path == "/api/catalog":
             try:
-                cat = core.load_catalog(self.catalog_path)
+                editing = core.load_catalog_for_editing(self.catalog_path)
                 detected = core.detect_codex_upstream_config()
                 self.send_json(200, {
                     "path": core.get_catalog_path(self.catalog_path),
-                    "catalog": cat,
+                    "catalog": editing["view"],
+                    "raw_catalog": editing["raw"],
+                    # Fall back to the prompt every model already carries, so the
+                    # left pane opens with real content before any model is added.
+                    "template_text": editing["template_text"] or _shared_prompt(editing["raw"]),
+                    "template_models": core.template_model_slugs(
+                        editing["raw"], editing["template_text"] or _shared_prompt(editing["raw"])
+                    ),
                     "detected_upstream": detected
                 })
             except Exception as e:
@@ -2625,8 +2788,25 @@ class CatalogRequestHandler(http.server.BaseHTTPRequestHandler):
             try:
                 body = self.read_body_json()
                 catalog_data = body.get("catalog", {})
+                # The editor shows {template} instead of the prompt text, so
+                # re-expand against the current placeholder text before writing.
+                template_text = core.read_template_library(self.catalog_path)
+                if template_text.strip():
+                    core._expand_placeholders(catalog_data, template_text)
                 saved = core.save_catalog(catalog_data, self.catalog_path)
                 self.send_json(200, {"success": True, "path": saved})
+            except Exception as e:
+                self.send_json(400, {"error": str(e)})
+            return
+
+        if path == "/api/template":
+            try:
+                body = self.read_body_json()
+                text = body.get("text", "")
+                if not isinstance(text, str):
+                    raise ValueError("'text' must be a string")
+                result = core.apply_template_text(text, self.catalog_path)
+                self.send_json(200, {"success": True, **result})
             except Exception as e:
                 self.send_json(400, {"error": str(e)})
             return

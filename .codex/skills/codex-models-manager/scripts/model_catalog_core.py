@@ -17,6 +17,8 @@ DEFAULT_UPSTREAM_URL = ""
 DEFAULT_API_KEY = ""
 OPENROUTER_MODELS_URL = "https://openrouter.ai/api/v1/models"
 AIDER_LEADERBOARD_URL = "https://aider.chat/docs/leaderboards/"
+DEFAULT_TEMPLATE_PLACEHOLDER = "{template}"
+TEMPLATE_LIBRARY_FILENAME = "instructions.md"
 
 
 def detect_codex_upstream_config(config_path: Optional[str] = None) -> Dict[str, str]:
@@ -575,6 +577,192 @@ def load_catalog(path: Optional[str] = None) -> Dict[str, Any]:
     return data
 
 
+def get_template_library_path(path: Optional[str] = None) -> str:
+    """Sidecar file holding the text that {template} expands to."""
+    return os.path.join(os.path.dirname(get_catalog_path(path)), TEMPLATE_LIBRARY_FILENAME)
+
+
+def read_template_library(path: Optional[str] = None) -> str:
+    lib = get_template_library_path(path)
+    if not os.path.exists(lib):
+        return ""
+    with open(lib, "r", encoding="utf-8", newline="") as f:
+        return f.read()
+
+
+def write_template_library(text: str, path: Optional[str] = None) -> str:
+    lib = get_template_library_path(path)
+    parent = os.path.dirname(lib)
+    if parent and not os.path.exists(parent):
+        os.makedirs(parent, exist_ok=True)
+    # newline="" keeps the prompt byte-identical; the default would turn \n into \r\n.
+    with open(lib, "w", encoding="utf-8", newline="") as f:
+        f.write(text)
+    return lib
+
+
+def is_placeholder(value: Any) -> bool:
+    return isinstance(value, str) and value.strip() == DEFAULT_TEMPLATE_PLACEHOLDER
+
+
+def _model_uses_placeholder(model: Dict[str, Any]) -> bool:
+    messages = model.get("model_messages")
+    if isinstance(messages, dict) and is_placeholder(messages.get("instructions_template")):
+        return True
+    return is_placeholder(model.get("base_instructions"))
+
+
+def _model_uses_text(model: Dict[str, Any], text: str) -> bool:
+    """True when the model's instructions already hold this shared text."""
+    if not text.strip():
+        return False
+    messages = model.get("model_messages")
+    if isinstance(messages, dict) and messages.get("instructions_template") == text:
+        return True
+    return model.get("base_instructions") == text
+
+
+def template_model_slugs(data: Dict[str, Any], template_text: str) -> List[str]:
+    """Slugs backed by the shared prompt, either by placeholder or by value."""
+    slugs: List[str] = []
+    for model in data.get("models", []):
+        if _model_uses_placeholder(model) or _model_uses_text(model, template_text):
+            slugs.append(model.get("slug", ""))
+    return slugs
+
+
+def _replace_shared_text(data: Dict[str, Any], old_text: str, new_text: str) -> List[str]:
+    """Swap models that carry the previous shared text over to the new text."""
+    if not old_text.strip() or old_text == new_text:
+        return []
+    replaced: List[str] = []
+    for model in data.get("models", []):
+        touched = False
+        messages = model.get("model_messages")
+        if isinstance(messages, dict) and messages.get("instructions_template") == old_text:
+            messages["instructions_template"] = new_text
+            touched = True
+        if model.get("base_instructions") == old_text:
+            model["base_instructions"] = new_text
+            touched = True
+        if touched:
+            replaced.append(model.get("slug", ""))
+    return replaced
+
+
+def _expand_placeholders(data: Dict[str, Any], template_text: str) -> List[str]:
+    """Replace {template} with the real text. Returns the slugs that were expanded."""
+    expanded: List[str] = []
+    missing: List[str] = []
+    for model in data.get("models", []):
+        if not _model_uses_placeholder(model):
+            continue
+        slug = model.get("slug", "")
+        if not template_text.strip():
+            missing.append(slug)
+            continue
+        messages = model.get("model_messages")
+        if isinstance(messages, dict) and is_placeholder(messages.get("instructions_template")):
+            messages["instructions_template"] = template_text
+        base = model.get("base_instructions")
+        if is_placeholder(base) or not (isinstance(base, str) and base):
+            model["base_instructions"] = template_text
+        expanded.append(slug)
+    if missing:
+        raise ValueError(
+            "These models use the {template} placeholder but the placeholder editor is empty: "
+            f"{', '.join(missing)}. Fill it in before saving."
+        )
+    return expanded
+
+
+def _collapse_placeholders(data: Dict[str, Any], template_text: str) -> List[str]:
+    """Show models sharing the sidecar text as {template} again."""
+    if not template_text.strip():
+        return []
+    collapsed: List[str] = []
+    for model in data.get("models", []):
+        touched = False
+        messages = model.get("model_messages")
+        if isinstance(messages, dict) and messages.get("instructions_template") == template_text:
+            messages["instructions_template"] = DEFAULT_TEMPLATE_PLACEHOLDER
+            touched = True
+        if model.get("base_instructions") == template_text:
+            model["base_instructions"] = DEFAULT_TEMPLATE_PLACEHOLDER
+            touched = True
+        if touched:
+            collapsed.append(model.get("slug", ""))
+    return collapsed
+
+
+def _dominant_prompt(raw: Dict[str, Any]) -> str:
+    """The instruction text shared by the most models, ignoring placeholders."""
+    counts: Dict[str, int] = {}
+    for model in raw.get("models", []):
+        messages = model.get("model_messages")
+        if not isinstance(messages, dict):
+            continue
+        text = messages.get("instructions_template")
+        if isinstance(text, str) and text and not is_placeholder(text):
+            counts[text] = counts.get(text, 0) + 1
+    if not counts:
+        return ""
+    return max(counts.items(), key=lambda kv: kv[1])[0]
+
+
+def load_catalog_for_editing(path: Optional[str] = None) -> Dict[str, Any]:
+    """
+    Catalog with placeholders collapsed, plus the raw on-disk data.
+
+    The editor shows the placeholder view but must not save it, so the caller
+    needs the original to re-expand against.
+    """
+    p = get_catalog_path(path)
+    if not os.path.exists(p):
+        ensure_codex_initialized(catalog_path=p)
+    with open(p, "r", encoding="utf-8") as f:
+        raw = json.load(f)
+    view = json.loads(json.dumps(raw))
+    text = read_template_library(p)
+    if not text.strip():
+        # Nothing saved yet: adopt the prompt the models already share, so the
+        # placeholder has something to expand to instead of failing the save.
+        text = _dominant_prompt(raw)
+        if text and not any(_model_uses_placeholder(m) for m in raw.get("models", [])):
+            write_template_library(text, p)
+    return {"view": view, "raw": raw, "template_text": text, "collapsed": _collapse_placeholders(view, text)}
+
+
+def get_template_status(path: Optional[str] = None) -> Dict[str, Any]:
+    """Current placeholder text plus the models that reference it."""
+    p = get_catalog_path(path)
+    with open(p, "r", encoding="utf-8") as f:
+        raw = json.load(f)
+    text = read_template_library(p)
+    models = template_model_slugs(raw, text)
+    return {"library_path": get_template_library_path(p), "text": text, "models": models}
+
+
+def apply_template_text(text: str, path: Optional[str] = None, do_backup: bool = True) -> Dict[str, Any]:
+    """Save the placeholder text and expand it into every referencing model."""
+    p = get_catalog_path(path)
+    old_text = read_template_library(p)
+    write_template_library(text, p)
+    with open(p, "r", encoding="utf-8") as f:
+        raw = json.load(f)
+    replaced = _replace_shared_text(raw, old_text, text)
+    expanded = _expand_placeholders(raw, text)
+    saved = save_catalog(raw, p, do_backup=do_backup)
+    return {
+        "path": saved,
+        "library": get_template_library_path(p),
+        "length": len(text),
+        "models": template_model_slugs(raw, text),
+        "replaced": replaced,
+        "expanded": expanded,
+    }
+
+
 def create_backup(path: Optional[str] = None, backup_dir: Optional[str] = None) -> str:
     src_path = get_catalog_path(path)
     if not os.path.exists(src_path):
@@ -638,6 +826,26 @@ def save_catalog(data: Dict[str, Any], path: Optional[str] = None, do_backup: bo
         raise ValueError("Cannot save invalid catalog: missing 'models' array")
 
     p = get_catalog_path(path)
+
+    # New or reordered models may still carry the placeholder; resolve it
+    # against the sidecar before the disk check so every save path (web, CLI)
+    # writes real instruction text.
+    if any(_model_uses_placeholder(m) for m in data["models"]):
+        text = read_template_library(p)
+        if text.strip():
+            _expand_placeholders(data, text)
+
+    # Codex reads this file directly, so {template} must never reach disk: it
+    # would become the model's literal system prompt. Use apply_template_text
+    # instead of saving the placeholder view.
+    stuck = [m.get("slug", "") for m in data["models"] if _model_uses_placeholder(m)]
+    if stuck:
+        raise ValueError(
+            "Cannot save: these models still hold the {template} placeholder: "
+            f"{', '.join(stuck)}. Save the placeholder editor instead, or replace the "
+            "placeholder with real instruction text."
+        )
+
     if do_backup and os.path.exists(p):
         create_backup(p)
 
@@ -795,6 +1003,14 @@ def add_model(
 
     created_model.update(new_model_config)
     created_model["slug"] = slug
+
+    # New models reference the shared prompt by placeholder instead of copying it.
+    messages = created_model.get("model_messages")
+    if not isinstance(messages, dict):
+        messages = {}
+        created_model["model_messages"] = messages
+    messages["instructions_template"] = DEFAULT_TEMPLATE_PLACEHOLDER
+    created_model["base_instructions"] = DEFAULT_TEMPLATE_PLACEHOLDER
 
     if "priority" not in new_model_config:
         max_priority = max([m.get("priority", 999) for m in models], default=999)
