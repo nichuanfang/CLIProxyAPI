@@ -52,17 +52,38 @@ function Get-EcosystemBinaryName([string]$EcosystemPath) {
     return "cli-proxy-api"
 }
 
+function Invoke-Pm2Command {
+    param(
+        [string[]]$Pm2Args,
+        [switch]$Quiet
+    )
+
+    # PM2 writes warnings such as "doesn't exist" to stderr. PowerShell turns redirected
+    # native stderr into a terminating error while $ErrorActionPreference is "Stop", so
+    # relax the preference here and rely on the exit code instead.
+    $previousPreference = $ErrorActionPreference
+    $ErrorActionPreference = "Continue"
+    try {
+        if ($Quiet) {
+            & pm2 @Pm2Args *> $null
+        } else {
+            & pm2 @Pm2Args 2>&1 | ForEach-Object { Write-Host $_ }
+        }
+        return $LASTEXITCODE
+    } finally {
+        $ErrorActionPreference = $previousPreference
+    }
+}
+
 function Stop-RegisteredProcess([string]$Name) {
     if (-not (Get-Command pm2 -ErrorAction SilentlyContinue)) {
         return $false
     }
 
-    & pm2 describe $Name *> $null
-    $registered = ($LASTEXITCODE -eq 0)
+    $registered = (Invoke-Pm2Command -Pm2Args @("describe", $Name) -Quiet) -eq 0
     if ($registered) {
         Write-Host "Stopping PM2 process: $Name"
-        & pm2 stop $Name
-        if ($LASTEXITCODE -ne 0) {
+        if ((Invoke-Pm2Command -Pm2Args @("stop", $Name)) -ne 0) {
             throw "Failed to stop PM2 process: $Name"
         }
     }
@@ -167,7 +188,7 @@ $buildExitCode = $LASTEXITCODE
 if ($buildExitCode -ne 0) {
     if ($wasRegistered) {
         Write-Warning "Build failed; restarting the previous PM2 process"
-        & pm2 restart $AppName --update-env
+        [void](Invoke-Pm2Command -Pm2Args @("restart", $AppName, "--update-env"))
     } else {
         Write-Warning "Build failed; no previous PM2 process to restore. The service is now stopped."
     }
@@ -182,11 +203,11 @@ Move-Item -LiteralPath $tempPath -Destination $OutputPath -Force
 
 Write-Host "Starting PM2 process: $AppName"
 if ($wasRegistered) {
-    & pm2 restart $AppName --update-env
+    $startExitCode = Invoke-Pm2Command -Pm2Args @("restart", $AppName, "--update-env")
 } else {
-    & pm2 start $EcosystemFile --only $AppName
+    $startExitCode = Invoke-Pm2Command -Pm2Args @("start", $EcosystemFile, "--only", $AppName)
 }
-if ($LASTEXITCODE -ne 0) {
+if ($startExitCode -ne 0) {
     throw "Failed to start PM2 process: $AppName"
 }
 
@@ -206,7 +227,7 @@ while ((Get-Date) -lt $deadline) {
     }
 }
 
-& pm2 list
+[void](Invoke-Pm2Command -Pm2Args @("list"))
 if ($healthy) {
     Write-Host "Service is healthy: $healthUrl"
 } else {
