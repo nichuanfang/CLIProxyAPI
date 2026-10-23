@@ -734,6 +734,12 @@ func (e *CodeBuddyExecutor) Refresh(ctx context.Context, auth *cliproxyauth.Auth
 	if token.RefreshToken != "" {
 		auth.Metadata["refresh_token"] = token.RefreshToken
 	}
+	if token.ExpiresIn > 0 {
+		auth.Metadata["expires_in"] = token.ExpiresIn
+	}
+	if interval := codebuddyauth.RefreshInterval(token); interval > 0 {
+		auth.Metadata["refresh_interval_seconds"] = int(interval / time.Second)
+	}
 	if expiredAt := codebuddyauth.TokenExpiry(token, time.Now()); !expiredAt.IsZero() {
 		expired := codebuddyauth.FormatExpires(expiredAt)
 		auth.Metadata["expired"] = expired

@@ -12,8 +12,10 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
-// codeBuddyRefreshLead refreshes access tokens well before their JWT expiry.
-var codeBuddyRefreshLead = 30 * 24 * time.Hour
+// codeBuddyRefreshLead keeps a conservative one-day lead for credentials that
+// do not yet carry an upstream-reported lifetime. Refresh writes a
+// lifetime-derived refresh interval into credential metadata.
+var codeBuddyRefreshLead = 24 * time.Hour
 
 // CodeBuddyAuthenticator implements CodeBuddy device authentication.
 type CodeBuddyAuthenticator struct{}
@@ -89,6 +91,15 @@ func (a *CodeBuddyAuthenticator) Login(ctx context.Context, cfg *config.Config, 
 	}
 	if token.RefreshExpiresIn > 0 {
 		metadata["refresh_expires_in"] = token.RefreshExpiresIn
+	}
+	if expiresAt := time.Now().UnixMilli() / 1000; expiresAt > 0 {
+		metadata["issued_at"] = expiresAt
+	}
+	if expiresIn := token.ExpiresIn; expiresIn > 0 {
+		metadata["expires_in"] = expiresIn
+		if interval := codebuddyauth.RefreshInterval(token); interval > 0 {
+			metadata["refresh_interval_seconds"] = int(interval / time.Second)
+		}
 	}
 
 	fileName := fmt.Sprintf("codebuddy-%d.json", time.Now().UnixMilli())

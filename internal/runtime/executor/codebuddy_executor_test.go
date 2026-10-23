@@ -166,6 +166,12 @@ func TestCodeBuddyExecutorRefresh(t *testing.T) {
 	if refreshed.Metadata["last_refresh"] == "" {
 		t.Fatal("last_refresh not set")
 	}
+	if got := refreshed.Metadata["expires_in"]; got != 7200 {
+		t.Fatalf("expires_in = %v, want 7200", got)
+	}
+	if got := refreshed.Metadata["refresh_interval_seconds"]; got != 5760 {
+		t.Fatalf("refresh_interval_seconds = %v, want 5760", got)
+	}
 	storage, ok := refreshed.Storage.(*codebuddyauth.TokenStorage)
 	if !ok || storage.AccessToken != "new" || storage.RefreshToken != "new-refresh" {
 		t.Fatalf("storage = %#v", refreshed.Storage)
