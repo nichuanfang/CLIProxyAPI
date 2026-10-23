@@ -182,6 +182,28 @@ func TestTokenExpiry(t *testing.T) {
 	}
 }
 
+func TestRefreshInterval(t *testing.T) {
+	tests := []struct {
+		name  string
+		token *Token
+		want  time.Duration
+	}{
+		{name: "28-day token", token: &Token{ExpiresIn: 2419200}, want: 2419200 * time.Second * 4 / 5},
+		{name: "55-day token", token: &Token{ExpiresIn: 4752000}, want: 4752000 * time.Second * 4 / 5},
+		{name: "short token", token: &Token{ExpiresIn: 600}, want: 480 * time.Second},
+		{name: "nil token", token: nil},
+		{name: "missing lifetime", token: &Token{}},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			got := RefreshInterval(test.token)
+			if got != test.want {
+				t.Fatalf("RefreshInterval() = %v, want %v", got, test.want)
+			}
+		})
+	}
+}
+
 func intString(value int) string {
 	raw, _ := json.Marshal(value)
 	return string(raw)

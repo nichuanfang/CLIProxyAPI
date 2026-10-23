@@ -389,3 +389,12 @@ func TokenExpiry(token *Token, issuedAt time.Time) time.Time {
 	}
 	return issuedAt.Add(time.Duration(token.ExpiresIn) * time.Second)
 }
+
+// RefreshInterval returns 80% of the reported token lifetime. The remaining
+// 20% is retained as a buffer before the access token expires.
+func RefreshInterval(token *Token) time.Duration {
+	if token == nil || token.ExpiresIn <= 0 {
+		return 0
+	}
+	return time.Duration(token.ExpiresIn) * time.Second * 4 / 5
+}
