@@ -280,6 +280,7 @@ func TestBindCodexSIWCRejectsNonFileSources(t *testing.T) {
 func TestBindCodexSIWCTildeAndAttributeOverride(t *testing.T) {
 	m, base, path, _ := setupSIWCBinding(t, "auth.json")
 	t.Setenv("HOME", filepath.Dir(path))
+	t.Setenv("USERPROFILE", filepath.Dir(path))
 	m.runtimeConfig.Store(&config.Config{AuthDir: "~"})
 	m.mu.Lock()
 	m.auths[base.ID].Attributes["use_siwc"] = "false"
