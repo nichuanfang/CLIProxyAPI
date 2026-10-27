@@ -74,6 +74,8 @@ work/
 .playwright-cli
 
 # Local generated artifacts
+data/websearch.db
+output/
 __pycache__/
 *.exe~
 *.bak

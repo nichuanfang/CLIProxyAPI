@@ -942,7 +942,16 @@ input[type="text"]:focus-visible, input[type="number"]:focus-visible, select:foc
   <!-- Tab 2: 上游模型比对 -->
   <div id="tab-upstream" class="tab-content" role="tabpanel" aria-labelledby="tab-btn-upstream" tabindex="0" style="display: none;">
     <div class="toolbar">
-        <input type="text" class="search-input" id="upstream-search" name="upstream-search" aria-label="筛选上游模型" placeholder="筛选上游模型…" autocomplete="off" oninput="paginationState.upstream.page=1; renderUpstreamTable()">
+      <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
+        <div class="form-group-inline">
+          <label for="upstream-owner-filter">供应商:</label>
+          <select id="upstream-owner-filter" class="filter-select" aria-label="按供应商筛选" onchange="onUpstreamOwnerChange()" style="min-width: 140px;">
+            <option value="">全部供应商 (All)</option>
+          </select>
+        </div>
+        <input type="text" class="search-input" id="upstream-search" name="upstream-search" aria-label="筛选上游模型" placeholder="筛选上游模型…" autocomplete="off" oninput="paginationState.upstream.page=1; renderUpstreamTable(); updateClearFilterButton()">
+        <button class="btn sm" id="upstream-filter-clear" onclick="clearUpstreamFilters()" style="display: none;" title="清空筛选">清空筛选</button>
+      </div>
       <span style="color: var(--text-muted); font-size: 12px;">直接点击“开启到 Codex”即可快速根据模板加入目录</span>
     </div>
     <div class="table-scroll">
@@ -1028,8 +1037,11 @@ input[type="text"]:focus-visible, input[type="number"]:focus-visible, select:foc
         <span id="benchmark-status-pill" class="badge success">基准数据同步就绪</span>
         <span style="font-size: 11px;" id="benchmark-updated-time">检测时间: 加载中…</span>
       </div>
-      <div>
+      <div style="display: flex; gap: 8px; align-items: center;">
         <button class="btn sm" onclick="refreshBenchmarkData()">🔄 重新检测最新数据</button>
+        <button class="btn sm primary" id="btn-ai-evaluate" onclick="startAiEvaluation()" title="使用 deepseek-v4.1-flash 开启 high 深度思考并调用 WebSearch MCP 评估">
+          🤖 AI 评估
+        </button>
       </div>
     </div>
 
@@ -1420,6 +1432,7 @@ async function fetchUpstream(silent = false) {
     const tabUps = document.getElementById('tab-upstream-num');
     if (tabUps) tabUps.textContent = state.upstreamModels.length;
 
+    populateUpstreamOwnerOptions();
     renderUpstreamTable();
     if (!silent) showToast('成功拉取 ' + state.upstreamModels.length + ' 个上游模型', 'success');
   } catch (err) {
@@ -1626,11 +1639,59 @@ function refreshBenchmarkData() {
   loadBenchmarkRecommendations(true);
 }
 
+async function startAiEvaluation() {
+  const btn = document.getElementById('btn-ai-evaluate');
+  const statusPill = document.getElementById('benchmark-status-pill');
+  const origHtml = btn ? btn.innerHTML : '';
+
+  if (btn) {
+    btn.disabled = true;
+    btn.innerHTML = '⏳ 正在进行 AI 深度评估…';
+  }
+  if (statusPill) {
+    statusPill.className = 'badge info';
+    statusPill.textContent = 'DeepSeek AI 联网检索与深度思考评估中…';
+  }
+  showToast('AI 评估已启动：deepseek-v4.1-flash 开启 high 深度思考，接入 WebSearch MCP 检索最新基准…', 'info');
+
+  try {
+    const res = await fetch('/api/benchmark/ai-evaluate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        url: document.getElementById('upstream-url')?.value || '',
+        api_key: document.getElementById('upstream-key')?.value || ''
+      })
+    });
+    const data = await res.json();
+    if (data.error) throw new Error(data.error);
+
+    benchmarkState.data = data;
+    renderBenchmarkView(data);
+    showToast('AI 深度评估已完成！', 'success');
+  } catch (err) {
+    showToast('AI 评估失败: ' + err.message, 'error');
+    if (statusPill) {
+      statusPill.className = 'badge error';
+      statusPill.textContent = 'AI 评估异常';
+    }
+  } finally {
+    if (btn) {
+      btn.disabled = false;
+      btn.innerHTML = origHtml || '🤖 AI 评估';
+    }
+  }
+}
+
 function renderBenchmarkView(data) {
   const statusPill = document.getElementById('benchmark-status-pill');
   const timeEl = document.getElementById('benchmark-updated-time');
+
   if (statusPill) {
-    if (data.source_status === 'online_synced') {
+    if (data.source_status === 'ai_evaluated') {
+      statusPill.className = 'badge success';
+      statusPill.textContent = 'DeepSeek AI 联网深度评估就绪';
+    } else if (data.source_status === 'online_synced') {
       statusPill.className = 'badge success';
       statusPill.textContent = '权威数据实时已同步';
     } else {
@@ -1932,8 +1993,56 @@ function renderQuadrantChart(models) {
   container.innerHTML = svg;
 }
 
+function populateUpstreamOwnerOptions() {
+  const select = document.getElementById('upstream-owner-filter');
+  if (!select) return;
+  const currentVal = select.value;
+  const owners = new Set();
+  (state.upstreamModels || []).forEach(m => {
+    const o = (m.owned_by || '').trim();
+    if (o) owners.add(o);
+  });
+  const sortedOwners = Array.from(owners).sort((a, b) => a.localeCompare(b));
+  select.innerHTML = '<option value="">全部供应商 (All)</option>';
+  sortedOwners.forEach(owner => {
+    const opt = document.createElement('option');
+    opt.value = owner;
+    opt.textContent = owner;
+    select.appendChild(opt);
+  });
+  if (currentVal && owners.has(currentVal)) {
+    select.value = currentVal;
+  }
+}
+
+function onUpstreamOwnerChange() {
+  paginationState.upstream.page = 1;
+  renderUpstreamTable();
+  updateClearFilterButton();
+}
+
+function clearUpstreamFilters() {
+  const searchInput = document.getElementById('upstream-search');
+  const ownerSelect = document.getElementById('upstream-owner-filter');
+  if (searchInput) searchInput.value = '';
+  if (ownerSelect) ownerSelect.value = '';
+  paginationState.upstream.page = 1;
+  renderUpstreamTable();
+  updateClearFilterButton();
+}
+
+function updateClearFilterButton() {
+  const searchInput = document.getElementById('upstream-search');
+  const ownerSelect = document.getElementById('upstream-owner-filter');
+  const clearBtn = document.getElementById('upstream-filter-clear');
+  if (!clearBtn) return;
+  const hasFilter = (searchInput && searchInput.value.trim().length > 0) || (ownerSelect && ownerSelect.value.length > 0);
+  clearBtn.style.display = hasFilter ? 'inline-flex' : 'none';
+}
+
 function renderUpstreamTable() {
-  const filter = (document.getElementById('upstream-search').value || '').toLowerCase().trim();
+  const nameFilter = (document.getElementById('upstream-search')?.value || '').toLowerCase().trim();
+  const ownerFilter = (document.getElementById('upstream-owner-filter')?.value || '').trim();
   const tbody = document.getElementById('upstream-tbody');
   tbody.innerHTML = '';
 
@@ -1941,9 +2050,16 @@ function renderUpstreamTable() {
   (state.catalog.models || []).forEach(m => { configuredMap[m.slug] = m; });
 
   const upModels = (state.upstreamModels || []).filter(up => {
-    const slug = up.id || up.slug;
-    if (!filter) return true;
-    return slug && slug.toLowerCase().includes(filter);
+    const slug = (up.id || up.slug || '').toLowerCase();
+    const owner = (up.owned_by || '').trim();
+    const cfg = configuredMap[up.id || up.slug];
+    const disp = (cfg && cfg.display_name ? cfg.display_name : '').toLowerCase();
+
+    if (ownerFilter && owner !== ownerFilter) return false;
+    if (nameFilter) {
+      if (!slug.includes(nameFilter) && !disp.includes(nameFilter)) return false;
+    }
+    return true;
   });
 
   // 同一个归属展示在一起，排序按照归属首字母升序 (A-Z)；若归属相同则按模型标识升序
@@ -1959,6 +2075,8 @@ function renderUpstreamTable() {
     const slugB = (b.id || b.slug || '').toLowerCase();
     return slugA.localeCompare(slugB);
   });
+
+  updateClearFilterButton();
 
   if (upModels.length === 0) {
     tbody.innerHTML = '<tr><td colspan="5" style="text-align: center; color: var(--text-muted); padding: 24px;">未发现可用模型源或无搜索匹配结果</td></tr>';
@@ -2510,6 +2628,7 @@ function initFromPreloadedData() {
         document.getElementById('upstream-count-badge').textContent = '上游可用: ' + state.upstreamModels.length;
         const tabUps = document.getElementById('tab-upstream-num');
         if (tabUps) tabUps.textContent = state.upstreamModels.length;
+        populateUpstreamOwnerOptions();
         renderUpstreamTable();
       }
     } catch (e) {

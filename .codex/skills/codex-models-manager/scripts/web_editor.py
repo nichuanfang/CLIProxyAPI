@@ -10,6 +10,7 @@ import urllib.parse
 import webbrowser
 from typing import Any, Dict
 
+import ai_evaluator
 import model_catalog_core as core
 
 HTML_TEMPLATE = r'''<!DOCTYPE html>
@@ -2699,7 +2700,14 @@ class CatalogRequestHandler(http.server.BaseHTTPRequestHandler):
 
         if path == "/api/benchmark/recommend":
             try:
+                cached_ai = ai_evaluator.get_cached_ai_evaluation(self.catalog_path)
                 cat = core.load_catalog(self.catalog_path)
+                current_slugs = {m.get("slug") for m in cat.get("models", [])}
+                if cached_ai and isinstance(cached_ai, dict) and cached_ai.get("models"):
+                    cached_slugs = {m.get("slug") for m in cached_ai.get("models", [])}
+                    if current_slugs == cached_slugs:
+                        self.send_json(200, cached_ai)
+                        return
                 benchmarks = core.get_or_update_benchmarks(self.catalog_path)
                 result = core.evaluate_catalog_models(cat, benchmarks)
                 self.send_json(200, result)
@@ -2824,6 +2832,21 @@ class CatalogRequestHandler(http.server.BaseHTTPRequestHandler):
                 cat = core.load_catalog(self.catalog_path)
                 benchmarks = core.get_or_update_benchmarks(self.catalog_path, force_refresh=True)
                 result = core.evaluate_catalog_models(cat, benchmarks)
+                self.send_json(200, result)
+            except Exception as e:
+                self.send_json(500, {"error": str(e)})
+            return
+
+        if path == "/api/benchmark/ai-evaluate":
+            try:
+                body = self.read_body_json()
+                cat = core.load_catalog(self.catalog_path)
+                result = ai_evaluator.evaluate_catalog_with_ai(
+                    cat,
+                    catalog_path=self.catalog_path,
+                    api_url=body.get("url"),
+                    api_key=body.get("api_key")
+                )
                 self.send_json(200, result)
             except Exception as e:
                 self.send_json(500, {"error": str(e)})
