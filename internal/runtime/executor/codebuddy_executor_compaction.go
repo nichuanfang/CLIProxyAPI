@@ -74,7 +74,7 @@ func (e *CodeBuddyExecutor) executeCodeBuddyCompaction(ctx context.Context, auth
 	// for update-intent normalization; both payload and original must carry the
 	// summary request or the raw compaction payload is forwarded verbatim.
 	summaryReq := cliproxyexecutor.Request{
-		Model:    baseModel,
+		Model:    req.Model,
 		Payload:  summaryPayload,
 		Metadata: req.Metadata,
 	}
@@ -89,39 +89,9 @@ func (e *CodeBuddyExecutor) executeCodeBuddyCompaction(ctx context.Context, auth
 	if errSummary != nil {
 		return resp, errSummary
 	}
-	summaryText, errExtract := helps.ExtractAntigravitySummaryText(summaryResp.Payload)
-	if errExtract != nil {
-		return resp, fmt.Errorf("extract summary: %w", errExtract)
-	}
-	capsule, errSeal := helps.SealAntigravityCompaction(summaryText, baseModel)
-	if errSeal != nil {
-		return resp, fmt.Errorf("seal compaction capsule: %w", errSeal)
-	}
-
-	usageNode := gjson.GetBytes(summaryResp.Payload, "usage")
-	inputTokens := int(usageNode.Get("input_tokens").Int())
-	if inputTokens == 0 {
-		inputTokens = int(usageNode.Get("prompt_tokens").Int())
-	}
-	outputTokens := int(usageNode.Get("output_tokens").Int())
-	if outputTokens == 0 {
-		outputTokens = int(usageNode.Get("completion_tokens").Int())
-	}
-	totalTokens := int(usageNode.Get("total_tokens").Int())
-	cachedTokens := int(usageNode.Get("prompt_cache_hit_tokens").Int())
-	if cachedTokens == 0 {
-		cachedTokens = int(usageNode.Get("cache_read_input_tokens").Int())
-	}
-	if totalTokens == 0 && inputTokens == 0 {
-		parsed := helps.ParseOpenAIUsage(summaryResp.Payload)
-		inputTokens = int(parsed.InputTokens)
-		outputTokens = int(parsed.OutputTokens)
-		totalTokens = int(parsed.TotalTokens)
-	}
-
-	respPayload := helps.BuildAntigravityCompactionResponse(baseModel, capsule, inputTokens, outputTokens, totalTokens)
-	if cachedTokens > 0 {
-		respPayload, _ = sjson.SetBytes(respPayload, "usage.input_tokens_details.cached_tokens", cachedTokens)
+	respPayload, errBuild := helps.BuildResponsesCompactionResponseFromSummary(baseModel, summaryResp.Payload)
+	if errBuild != nil {
+		return resp, fmt.Errorf("build codebuddy compaction response: %w", errBuild)
 	}
 	return cliproxyexecutor.Response{
 		Payload: respPayload,
@@ -137,15 +107,10 @@ func (e *CodeBuddyExecutor) executeCodeBuddyCompactionStream(ctx context.Context
 	if errSummary != nil {
 		return nil, errSummary
 	}
-	item := gjson.GetBytes(summaryResp.Payload, "output.0")
-	capsule := item.Get("encrypted_content").String()
-	if item.Get("type").String() != "compaction" || capsule == "" {
-		return nil, fmt.Errorf("extract summary: compaction item missing")
+	chunks, errBuild := helps.BuildResponsesCompactionStreamChunksFromResponse(baseModel, summaryResp.Payload)
+	if errBuild != nil {
+		return nil, fmt.Errorf("build codebuddy compaction stream: %w", errBuild)
 	}
-	inputTokens := int(gjson.GetBytes(summaryResp.Payload, "usage.input_tokens").Int())
-	outputTokens := int(gjson.GetBytes(summaryResp.Payload, "usage.output_tokens").Int())
-	totalTokens := int(gjson.GetBytes(summaryResp.Payload, "usage.total_tokens").Int())
-	chunks := helps.BuildAntigravityCompactionStreamChunks(baseModel, capsule, inputTokens, outputTokens, totalTokens)
 	out := make(chan cliproxyexecutor.StreamChunk, len(chunks))
 	for _, chunk := range chunks {
 		out <- cliproxyexecutor.StreamChunk{Payload: chunk}

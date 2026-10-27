@@ -59,6 +59,18 @@ func (u *codebuddyFallbackUpstream) handler(t *testing.T) http.HandlerFunc {
 			w.Header().Set("Content-Type", "text/event-stream")
 			_, _ = w.Write([]byte(`data: {"id":"chatcmpl-tool","object":"chat.completion.chunk","model":"` + codebuddyFallbackModel + `","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"id":"call-1","type":"function","function":{"name":"get_weather","arguments":"{\"city\":\"Beijing\"}"}}]},"finish_reason":"tool_calls"}]}` + "\n\n"))
 			_, _ = w.Write([]byte("data: [DONE]\n\n"))
+		case "finish-eof", "truncated", "malformed", "incomplete":
+			w.Header().Set("Content-Type", "text/event-stream")
+			finish := ""
+			if event == "finish-eof" {
+				finish = "stop"
+			} else if event == "incomplete" {
+				finish = "length"
+			}
+			_, _ = io.WriteString(w, u.chunk(call, "partial", finish))
+			if event == "malformed" {
+				_, _ = io.WriteString(w, "data: {\"choices\":[\n\n")
+			}
 		default:
 			status, err := strconv.Atoi(event)
 			if err != nil {
@@ -309,6 +321,55 @@ func TestResponsesWebsocketCodeBuddyFallbackExposesUpstreamErrors(t *testing.T) 
 			}
 			if got := gjson.GetBytes(errorPayload, "error.message").String(); got == "" {
 				t.Fatalf("downstream error has no message: %s", errorPayload)
+			}
+		})
+	}
+}
+
+func TestResponsesWebsocketCodeBuddyFallbackTerminalIntegrity(t *testing.T) {
+	for _, event := range []string{"finish-eof", "truncated", "malformed", "incomplete"} {
+		t.Run(event, func(t *testing.T) {
+			ginSetTestMode()
+			upstream, conn := newCodeBuddyFallbackWebsocket(t, event, "success")
+			writeCodeBuddyWebsocket(t, conn, `{"type":"response.create","model":"`+codebuddyFallbackModel+`","input":[{"type":"message","role":"user","content":[{"type":"input_text","text":"first"}]}]}`)
+			if event == "finish-eof" {
+				completed := readCodeBuddyWebsocketEvent(t, conn, wsEventTypeCompleted)
+				responseID := gjson.GetBytes(completed, "response.id").String()
+				writeCodeBuddyWebsocket(t, conn, fmt.Sprintf(`{"type":"response.create","previous_response_id":%q,"input":[{"type":"message","role":"user","content":[{"type":"input_text","text":"next"}]}]}`, responseID))
+				readCodeBuddyWebsocketEvent(t, conn, wsEventTypeCompleted)
+				bodies := upstream.bodies()
+				if len(bodies) != 2 {
+					t.Fatalf("upstream calls = %d, want 2", len(bodies))
+				}
+				assertCodeBuddyChatMessages(t, bodies[1], "first", "partial", "next")
+				return
+			}
+			if event == "incomplete" {
+				payload := readCodeBuddyWebsocketEvent(t, conn, "response.incomplete")
+				if gjson.GetBytes(payload, "response.incomplete_details.reason").String() != "max_output_tokens" {
+					t.Fatalf("missing incomplete reason: %s", payload)
+				}
+				return
+			}
+			terminal := false
+			for i := 0; i < 32; i++ {
+				payload, errRead := readCodeBuddyWebsocketEventOrClose(t, conn)
+				if errRead != nil {
+					terminal = true
+					break
+				}
+				switch gjson.GetBytes(payload, "type").String() {
+				case "response.completed":
+					t.Fatalf("unfinished turn completed: %s", payload)
+				case "error", "response.failed":
+					terminal = true
+				}
+				if terminal {
+					break
+				}
+			}
+			if !terminal || len(upstream.bodies()) != 1 {
+				t.Fatalf("unfinished turn was replayed or never terminated: calls=%d", len(upstream.bodies()))
 			}
 		})
 	}
