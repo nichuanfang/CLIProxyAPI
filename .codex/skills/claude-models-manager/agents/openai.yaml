@@ -1,0 +1,4 @@
+interface:
+  display_name: "Claude Models Manager"
+  short_description: "Manage Claude Code models with a local visual editor"
+  default_prompt: "Use $claude-models-manager to open the Claude Code model editor or update a model mapping."
