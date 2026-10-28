@@ -32,6 +32,12 @@ def main():
     fetch.add_argument("--url", default="")
     fetch.add_argument("--key-stdin", action="store_true")
     commands.add_parser("backups")
+    commands.add_parser("audit", help="Inspect settings, scopes and launch-tool restrictions without executing them")
+    commands.add_parser("document", help="Print the settings JSON with secret-preserving placeholders")
+    edit = commands.add_parser("edit", help="Validate/preview a JSON file; --apply explicitly saves it")
+    edit.add_argument("file")
+    edit.add_argument("--revision", help="Pin an earlier document/preview revision to detect intervening changes")
+    edit.add_argument("--apply", action="store_true")
     restore = commands.add_parser("restore")
     restore.add_argument("name")
     args = parser.parse_args()
@@ -39,6 +45,14 @@ def main():
     try:
         if args.command == "list":
             result = manager.state()
+        elif args.command == "audit":
+            result = manager.audit()
+        elif args.command == "document":
+            result = manager.document()
+        elif args.command == "edit":
+            from pathlib import Path
+            result = manager.edit_settings({"mode": "json", "content": Path(args.file).read_text(encoding="utf-8-sig")},
+                                           args.revision or manager.state()["revision"], save=args.apply)
         elif args.command == "backups":
             result = manager.backups()
         elif args.command == "fetch":

@@ -1,4 +1,7 @@
 interface:
   display_name: "Claude Models Manager"
-  short_description: "Manage Claude Code models with a local visual editor"
-  default_prompt: "Use $claude-models-manager to open the Claude Code model editor or update a model mapping."
+  short_description: "Review and edit Claude Code models and settings locally"
+  default_prompt: "Use $claude-models-manager to review my Claude Code configuration or open the local settings editor."
+
+policy:
+  allow_implicit_invocation: false

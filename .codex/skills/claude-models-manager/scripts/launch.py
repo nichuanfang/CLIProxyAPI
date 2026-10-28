@@ -19,7 +19,7 @@ def ready(port, settings):
     try:
         with urllib.request.urlopen(f"http://127.0.0.1:{port}/api/health", timeout=0.15) as response:
             data = json.load(response)
-        return data.get("app") == "claude-models-manager" and data.get("settings_path") == str(settings)
+        return data.get("app") == "claude-models-manager" and data.get("version") == 2 and data.get("settings_path") == str(settings)
     except urllib.error.HTTPError as exc:
         exc.close()
         return False

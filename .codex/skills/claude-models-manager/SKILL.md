@@ -1,8 +1,8 @@
 ---
 name: claude-models-manager
-description: Manage Claude Code model aliases, default models, gateway credentials and model discovery in settings.json. Open a local visual editor, discover upstream /v1/models, edit Opus/Sonnet/Haiku/Fable/Custom mappings, or restore configuration backups. Does not manage Codex catalogs or the Claude desktop application's model picker.
+description: Manage Claude Code settings.json with a local visual editor, model mappings, gateway discovery, common preferences, permission rules, secret-preserving JSON edits, configuration checks and backup restoration. Use to review or edit personal Claude Code configuration. Does not manage Codex catalogs or the Claude desktop application.
 metadata:
-  short-description: Manage Claude Code models and gateway settings
+  short-description: Manage and review Claude Code models and settings
 ---
 
 # Claude Models Manager
@@ -26,10 +26,50 @@ next nine ports. It does not initialize or modify Claude settings on startup.
 Honor the user's browser rules; use `--no-browser` by default in this workspace.
 For an explicit request to open a browser, use the permitted browser tool.
 
-The editor supports five native mapping slots, a default model selector,
-upstream search, connection settings, a redacted JSON preview, backup restoration,
-and server shutdown. Changes are saved explicitly, with optimistic conflict
-detection, atomic replacement and a complete pre-change backup.
+The editor supports five native mapping slots, default-model selection,
+upstream search, connections, common preferences, permission rules, a full JSON
+editor, configuration checks, backup restoration and server shutdown. Common
+preferences and JSON edits show changed field paths before saving. All writes
+use revision checks, atomic replacement and a complete pre-change backup.
+
+## Configuration review and editing
+
+For a configuration review, run `catalog_cli.py audit`. It reads settings scopes,
+registered MCP names and literal `--tools` lists in common PowerShell profiles;
+it does not execute hooks, shell commands, MCP tools or model requests. Report
+documented findings and optional preferences separately. The rules were checked
+against official documentation on 2026-10-28, not fetched live on each audit.
+Use current documentation for a request about the latest behavior.
+
+The common-preferences tab edits permission mode and rules, update channel,
+the update disable switch, memory, session retention, PowerShell, MCP tool search,
+the gateway classifier compatibility switch and the editor schema hint.
+Only changed form fields are submitted; unknown settings are preserved.
+
+The JSON editor loads recognized credential fields and common inline secret
+patterns as `[KEEP_EXISTING_SECRET]`. Keeping a placeholder at its original path
+preserves that value. Moving a placeholder is rejected. Deleting its field
+deletes the saved value; the preview flags affected secret paths. Use Connection
+Settings to replace credentials through a masked input. Secret detection uses
+heuristics, so inspect unusual custom fields before copying a draft or output.
+
+For CLI editing, `document` emits a JSON envelope containing the redacted
+`content` string and revision. Save the decoded content to a draft file, edit it,
+then preview or apply:
+
+```powershell
+python $cli audit
+python $cli document
+python $cli edit D:\temp\claude-settings-draft.json
+python $cli edit D:\temp\claude-settings-draft.json --revision <revision-from-preview> --apply
+```
+
+Without `--apply`, `edit` validates and previews without writing. Supply the
+preview/document revision with `--revision` when applying an earlier draft, so
+intervening changes are rejected. Without it, the CLI reads the current revision
+at invocation time. JSON validation
+checks structure and known field types, rejects duplicate keys, and preserves
+unknown fields; it is not a complete official JSON Schema validator.
 
 ## CLI tasks
 
@@ -68,7 +108,7 @@ redacted. A blank new credential in the editor preserves the existing one.
   those features. The editor preserves any pre-existing capability overrides.
 - Gateway discovery uses `CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY=1`.
 - `availableModels` is an existing restriction, not a custom model catalog;
-  the manager preserves it, along with `modelOverrides` and all unrelated settings.
+  model mapping actions preserve it, along with `modelOverrides` and unrelated settings.
 - Display name overrides apply to gateways/supported third-party providers.
 - `/v1/models` discovery alone does not prove Messages or tool-call compatibility.
 - The configured base URL must support Anthropic Messages. The saved credential

@@ -47,12 +47,16 @@ class Handler(BaseHTTPRequestHandler):
                 page = Path(__file__).with_name("web_editor.html").read_text(encoding="utf-8")
                 return self.respond(200, page.replace("__SESSION_TOKEN__", self.server.token), "text/html; charset=utf-8")
             if self.path == "/api/health":
-                return self.respond(200, {"app": "claude-models-manager", "version": 1,
+                return self.respond(200, {"app": "claude-models-manager", "version": 2,
                                           "settings_path": str(self.server.manager.path)})
             if self.path == "/api/state":
                 return self.respond(200, self.server.manager.state())
             if self.path == "/api/backups":
                 return self.respond(200, self.server.manager.backups())
+            if self.path == "/api/document":
+                return self.respond(200, self.server.manager.document())
+            if self.path == "/api/audit":
+                return self.respond(200, self.server.manager.audit())
             if self.path == "/favicon.ico":
                 return self.respond(204, "")
             self.respond(404, {"error": "Not found"})
@@ -74,6 +78,8 @@ class Handler(BaseHTTPRequestHandler):
             manager = self.server.manager
             if self.path == "/api/update":
                 return self.respond(200, manager.update(payload.get("changes"), payload.get("revision")))
+            if self.path in ("/api/settings/preview", "/api/settings/save"):
+                return self.respond(200, manager.edit_settings(payload, payload.get("revision"), save=self.path.endswith("/save")))
             if self.path == "/api/fetch":
                 return self.respond(200, manager.fetch(payload.get("url", ""), payload.get("api_key")))
             if self.path == "/api/restore":

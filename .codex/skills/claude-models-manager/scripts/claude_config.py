@@ -12,6 +12,8 @@ import urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
 
+import settings_editor
+
 
 ROLES = {
     "opus": "ANTHROPIC_DEFAULT_OPUS_MODEL",
@@ -85,11 +87,12 @@ class NoRedirect(urllib.request.HTTPRedirectHandler):
 
 
 class Manager:
-    def __init__(self, settings=None):
+    def __init__(self, settings=None, workspace=None):
         config_dir = Path(os.environ.get("CLAUDE_CONFIG_DIR") or Path.home() / ".claude")
         self.path = Path(settings or config_dir / "settings.json").expanduser().resolve()
         self.backup_dir = self.path.parent / "model-manager" / "backups" / self.path.name
         self.lock = threading.RLock()
+        self.workspace = Path(workspace or Path.cwd()).resolve()
 
     def read(self):
         raw = self.path.read_bytes() if self.path.exists() else None
@@ -123,7 +126,82 @@ class Manager:
                     "auth_kind": next((k for k in AUTH_KEYS if env.get(k)), ""),
                     "env_model": env.get("ANTHROPIC_MODEL", ""),
                     "env_default_model": env.get("ANTHROPIC_DEFAULT_MODEL", ""),
-                    "available_models": data.get("availableModels"), "environment_overrides": overrides}
+                    "available_models": data.get("availableModels"), "environment_overrides": overrides,
+                    "preferences": settings_editor.redact({
+                        "permissions": data.get("permissions", {}), "autoUpdatesChannel": data.get("autoUpdatesChannel"),
+                        "autoMemoryEnabled": data.get("autoMemoryEnabled"), "cleanupPeriodDays": data.get("cleanupPeriodDays"),
+                        "schema": "$schema" in data,
+                        "updates": "disabled" if env.get("DISABLE_AUTOUPDATER") == "1" else "default",
+                        "powershell": {"1": "on", "0": "off"}.get(env.get("CLAUDE_CODE_USE_POWERSHELL_TOOL"), "default"),
+                        "toolSearch": env.get("ENABLE_TOOL_SEARCH", "default"),
+                        "autoModeServer": "client" if env.get("CLAUDE_CODE_AUTO_MODE_SERVER") == "0" else "default"})}
+
+    def document(self):
+        with self.lock:
+            data, _, revision = self.read()
+            return {"revision": revision, "content": json.dumps(settings_editor.redact(data), ensure_ascii=False, indent=2),
+                    "secret_placeholder": settings_editor.KEEP_SECRET, "settings_path": str(self.path)}
+
+    def audit(self):
+        import config_audit
+        with self.lock:
+            data, _, revision = self.read()
+            context = config_audit.inspect_context(self.path, self.workspace)
+            result = config_audit.report(data, self.path, context)
+            result["revision"] = revision
+            return result
+
+    def edit_settings(self, payload, expected, save=False):
+        if not isinstance(payload, dict):
+            raise ConfigError("设置请求必须是对象。")
+        with self.lock:
+            data, raw, revision = self.read()
+            self._check_revision(expected, revision)
+            try:
+                if payload.get("mode") == "json":
+                    content = payload.get("content")
+                    if not isinstance(content, str) or len(content.encode("utf-8")) > MAX_BYTES:
+                        raise ValueError("配置文本必须小于 4 MiB。")
+                    result = settings_editor.resolve_secrets(settings_editor.parse_document(content), data)
+                elif payload.get("mode") == "preferences":
+                    result = settings_editor.apply_preferences(data, payload.get("changes"))
+                else:
+                    raise ValueError("未知的配置编辑方式。")
+                settings_editor.validate(result)
+            except (ValueError, TypeError) as exc:
+                raise ConfigError(str(exc) if isinstance(exc, ValueError) else "配置字段类型不正确。") from None
+            changes = settings_editor.differences(data, result)
+            if save:
+                self._commit(data, result, raw, revision)
+                return self.state()
+            secret_changes = []
+
+            def find_secrets(before, after, key="", path="", sensitive=False):
+                sensitive = sensitive or bool(settings_editor.SECRET_KEY.search(key))
+                if isinstance(before, dict):
+                    new = after if isinstance(after, dict) else {}
+                    for name, value in before.items():
+                        child = path + "/" + name.replace("~", "~0").replace("/", "~1")
+                        find_secrets(value, new.get(name), name, child, sensitive)
+                elif isinstance(before, list):
+                    new = after if isinstance(after, list) else []
+                    for i, value in enumerate(before):
+                        find_secrets(value, new[i] if i < len(new) else None, key, path + "/" + str(i), sensitive)
+                elif before != after and settings_editor.redact(before, key, sensitive) == settings_editor.KEEP_SECRET:
+                    secret_changes.append(path)
+
+            find_secrets(data, result)
+            return {"changes": changes[:200], "change_count": len(changes), "secret_changes": secret_changes,
+                    "revision": revision, "note": "已校验 JSON 结构和已知字段类型；未知字段会保留，此检查不是完整官方 Schema 校验。保存前会备份整个配置。"}
+
+    def _commit(self, original, result, raw, revision):
+        if result != original:
+            encoded = (json.dumps(result, ensure_ascii=False, indent=2) + "\n").encode("utf-8")
+            if len(encoded) > MAX_BYTES:
+                raise ConfigError("配置保存后不能超过 4 MiB。")
+            self._check_revision(revision, self.read()[2])
+            self._backup(raw)
+            atomic_write(self.path, encoded)
 
     def _backup(self, raw):
         stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S.%fZ")
@@ -204,12 +282,7 @@ class Manager:
                 env.pop("ANTHROPIC_DEFAULT_MODEL", None)
             if not env and "env" not in data:
                 result.pop("env", None)
-            if result != data:
-                encoded = (json.dumps(result, ensure_ascii=False, indent=2) + "\n").encode("utf-8")
-                # Check again after validation so external edits are not silently replaced.
-                self._check_revision(revision, self.read()[2])
-                self._backup(raw)
-                atomic_write(self.path, encoded)
+            self._commit(data, result, raw, revision)
             return self.state()
 
     def backups(self):
