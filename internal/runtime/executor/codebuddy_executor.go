@@ -95,13 +95,15 @@ func (e *CodeBuddyExecutor) Execute(ctx context.Context, auth *cliproxyauth.Auth
 	from := opts.SourceFormat
 	responseFormat := cliproxyexecutor.ResponseFormatOrSource(opts)
 	to := sdktranslator.FormatOpenAI
+	// DeepSeek tool continuations need the unsigned thinking returned through Claude.
+	preserveThinking := from == sdktranslator.FormatClaude && baseModel == "deepseek-v4.1-flash"
 	originalPayload := req.Payload
 	if len(opts.OriginalRequest) > 0 {
 		originalPayload = opts.OriginalRequest
 	}
 	// Upstream only supports streaming; always translate as a stream request.
 	originalTranslated, translated, updatesChanged, err := helps.TranslateRequestPairWithAPIKeyModelCompatibilityAndUpdateIntent(
-		ctx, opts.Headers, e.cfg, from, to, baseModel, originalPayload, req.Payload, true, false,
+		ctx, opts.Headers, e.cfg, from, to, baseModel, originalPayload, req.Payload, true, preserveThinking,
 	)
 	if err != nil {
 		return resp, err
@@ -389,12 +391,13 @@ func (e *CodeBuddyExecutor) ExecuteStream(ctx context.Context, auth *cliproxyaut
 	from := opts.SourceFormat
 	responseFormat := cliproxyexecutor.ResponseFormatOrSource(opts)
 	to := sdktranslator.FormatOpenAI
+	preserveThinking := from == sdktranslator.FormatClaude && baseModel == "deepseek-v4.1-flash"
 	originalPayload := req.Payload
 	if len(opts.OriginalRequest) > 0 {
 		originalPayload = opts.OriginalRequest
 	}
 	originalTranslated, translated, updatesChanged, err := helps.TranslateRequestPairWithAPIKeyModelCompatibilityAndUpdateIntent(
-		ctx, opts.Headers, e.cfg, from, to, baseModel, originalPayload, req.Payload, true, false,
+		ctx, opts.Headers, e.cfg, from, to, baseModel, originalPayload, req.Payload, true, preserveThinking,
 	)
 	if err != nil {
 		return nil, err
@@ -628,8 +631,9 @@ func (e *CodeBuddyExecutor) CountTokens(ctx context.Context, auth *cliproxyauth.
 	from := opts.SourceFormat
 	responseFormat := cliproxyexecutor.ResponseFormatOrSource(opts)
 	to := sdktranslator.FormatOpenAI
+	preserveThinking := from == sdktranslator.FormatClaude && baseModel == "deepseek-v4.1-flash"
 	_, translated, updatesChanged, err := helps.TranslateRequestPairWithAPIKeyModelCompatibilityAndUpdateIntent(
-		ctx, opts.Headers, e.cfg, from, to, baseModel, req.Payload, req.Payload, false, false,
+		ctx, opts.Headers, e.cfg, from, to, baseModel, req.Payload, req.Payload, false, preserveThinking,
 	)
 	if err != nil {
 		return cliproxyexecutor.Response{}, err
@@ -637,7 +641,7 @@ func (e *CodeBuddyExecutor) CountTokens(ctx context.Context, auth *cliproxyauth.
 	originalTranslated := translated
 	if len(opts.OriginalRequest) > 0 {
 		originalTranslated, _, _, err = helps.TranslateRequestPairWithAPIKeyModelCompatibilityAndUpdateIntent(
-			ctx, opts.Headers, e.cfg, from, to, baseModel, opts.OriginalRequest, opts.OriginalRequest, false, false,
+			ctx, opts.Headers, e.cfg, from, to, baseModel, opts.OriginalRequest, opts.OriginalRequest, false, preserveThinking,
 		)
 		if err != nil {
 			return cliproxyexecutor.Response{}, err
