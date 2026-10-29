@@ -127,6 +127,7 @@ func (e *CodeBuddyExecutor) Execute(ctx context.Context, auth *cliproxyauth.Auth
 	if codeBuddyCompactionSummaryFromContext(ctx) {
 		translated = finalizeCodeBuddyCompactionSummaryBody(translated)
 	}
+	translated = helps.EnsureCodeBuddyReasoningEffort(translated, baseModel)
 	translated = helps.ApplyPayloadConfigWithRequest(e.cfg, baseModel, to.String(), from.String(), "", translated, originalTranslated, requestedModel, requestPath, opts.Headers)
 
 	httpReq, errNew := http.NewRequestWithContext(ctx, http.MethodPost, baseURL+codebuddyauth.ChatPath, bytes.NewReader(translated))
@@ -417,6 +418,7 @@ func (e *CodeBuddyExecutor) ExecuteStream(ctx context.Context, auth *cliproxyaut
 	}
 	translated = helps.SetBoolIfDifferent(translated, "stream_options.include_usage", true)
 	reporter.SetTranslatedReasoningEffort(translated, to.String())
+	translated = helps.EnsureCodeBuddyReasoningEffort(translated, baseModel)
 	translated = helps.ApplyPayloadConfigWithRequest(e.cfg, baseModel, to.String(), from.String(), "", translated, originalTranslated, requestedModel, requestPath, opts.Headers)
 
 	httpReq, errNew := http.NewRequestWithContext(ctx, http.MethodPost, baseURL+codebuddyauth.ChatPath, bytes.NewReader(translated))
