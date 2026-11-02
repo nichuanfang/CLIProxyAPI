@@ -87,7 +87,36 @@ func GetKimiModels() []*ModelInfo {
 
 // GetCodeBuddyModels returns the fixed CodeBuddy model definitions.
 func GetCodeBuddyModels() []*ModelInfo {
-	return cloneModelInfos(getModels().CodeBuddy)
+	models := cloneModelInfos(getModels().CodeBuddy)
+	for _, model := range models {
+		if model == nil {
+			continue
+		}
+		// Keep capabilities verified against CodeBuddy's gateway on 2026-11-02
+		// when remote catalogs are stale. Only add tested compatibility levels.
+		switch model.ID {
+		case "deepseek-v4.1-flash", "glm-5.3-flash":
+			model.ContextLength = 1000000
+			model.MaxCompletionTokens = 131072
+			if model.ID == "deepseek-v4.1-flash" {
+				model.MaxCompletionTokens = 393216
+			}
+			// The catalog advertises low/high/max and canDisableThinking;
+			// both gateways also accept medium/xhigh unchanged.
+			model.Thinking = &ThinkingSupport{
+				Levels:      []string{"low", "medium", "high", "xhigh", "max", "none"},
+				ZeroAllowed: true,
+			}
+		case "glm-5.3":
+			model.ContextLength = 1000000
+			model.MaxCompletionTokens = 131072
+			model.Thinking = &ThinkingSupport{
+				Levels:      []string{"low", "medium", "high", "max", "none"},
+				ZeroAllowed: true,
+			}
+		}
+	}
+	return models
 }
 
 // GetAntigravityModels returns the standard Antigravity model definitions.
@@ -595,7 +624,7 @@ func LookupStaticModelInfo(modelID string) *ModelInfo {
 		data.XAI,
 		GetDevinModels(),
 		GetMetaModels(),
-		data.CodeBuddy,
+		GetCodeBuddyModels(),
 	}
 	for _, models := range allModels {
 		for _, m := range models {

@@ -429,3 +429,58 @@ func TestCodeBuddyModels(t *testing.T) {
 		t.Fatal("LookupStaticModelInfo(glm-5.3) = nil")
 	}
 }
+
+func TestCodeBuddyVerifiedCapabilities(t *testing.T) {
+	before, err := json.Marshal(getModels().CodeBuddy)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct {
+		id, levels string
+		output     int
+	}{
+		{"deepseek-v4.1-flash", "low,medium,high,xhigh,max,none", 393216},
+		{"glm-5.3", "low,medium,high,max,none", 131072},
+		{"glm-5.3-flash", "low,medium,high,xhigh,max,none", 131072},
+	} {
+		for name, models := range map[string][]*ModelInfo{
+			"provider": GetCodeBuddyModels(),
+			"channel":  GetStaticModelDefinitionsByChannel("codebuddy"),
+			"lookup":   {LookupStaticModelInfo(tc.id)},
+		} {
+			t.Run(tc.id+"/"+name, func(t *testing.T) {
+				var model *ModelInfo
+				for _, candidate := range models {
+					if candidate != nil && candidate.ID == tc.id {
+						model = candidate
+						break
+					}
+				}
+				if model == nil {
+					t.Fatalf("missing %s", tc.id)
+				}
+				if model.ContextLength != 1000000 || model.MaxCompletionTokens != tc.output {
+					t.Fatalf("token limits = %d/%d, want 1000000/%d", model.ContextLength, model.MaxCompletionTokens, tc.output)
+				}
+				if model.Thinking == nil || !model.Thinking.ZeroAllowed {
+					t.Fatal("thinking must support disabling")
+				}
+				if got := strings.Join(model.Thinking.Levels, ","); got != tc.levels {
+					t.Fatalf("thinking levels = %s", got)
+				}
+				// Returned metadata must not share mutable thinking state.
+				model.Thinking.Levels[0] = "changed"
+			})
+		}
+	}
+	after, errAfter := json.Marshal(getModels().CodeBuddy)
+	if errAfter != nil {
+		t.Fatal(errAfter)
+	}
+	if string(before) != string(after) {
+		t.Fatal("capability corrections mutated the source catalog")
+	}
+	if got := LookupStaticModelInfo("deepseek-v4.1-flash").Thinking.Levels[0]; got != "low" {
+		t.Fatalf("returned thinking state leaked into subsequent lookups: %s", got)
+	}
+}
