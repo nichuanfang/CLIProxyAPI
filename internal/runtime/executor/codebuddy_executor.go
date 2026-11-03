@@ -171,7 +171,11 @@ func (e *CodeBuddyExecutor) Execute(ctx context.Context, auth *cliproxyauth.Auth
 		body, _ := io.ReadAll(httpResp.Body)
 		helps.AppendAPIResponseChunk(ctx, e.cfg, body)
 		helps.LogWithRequestID(ctx).Debugf("request error, error status: %d, error message: %s", httpResp.StatusCode, helps.SummarizeErrorBody(httpResp.Header.Get("Content-Type"), body))
-		err = newOpenAICompatStatusError(httpResp.StatusCode, httpResp.Header, body)
+		upstreamErr := newOpenAICompatStatusError(httpResp.StatusCode, httpResp.Header, body)
+		if upstreamErr.retryAfter == nil {
+			upstreamErr.retryAfter = helps.CodeBuddyRetryAfter(httpResp.StatusCode, body)
+		}
+		err = upstreamErr
 		return resp, err
 	}
 
@@ -190,18 +194,21 @@ func (e *CodeBuddyExecutor) Execute(ctx context.Context, auth *cliproxyauth.Auth
 	}
 	helps.AppendAPIResponseChunk(ctx, e.cfg, body)
 	reporter.ObserveResponseModel(body)
+	var param any
+	out := sdktranslator.TranslateNonStream(ctx, to, responseFormat, req.Model, helps.ApplyPatchOriginalRequest(req, opts), translated, body, &param)
+	if helps.ApplyPatchTranslationError(param) != nil || len(out) == 0 {
+		err = statusErr{code: http.StatusBadGateway, msg: helps.ApplyPatchUpstreamErrorMessage}
+		if hasUsage {
+			reporter.PublishFailureWithDetail(ctx, usageDetail, err)
+		}
+		return resp, err
+	}
 	if hasUsage {
 		reporter.Publish(ctx, usageDetail)
 	} else {
 		reporter.Publish(ctx, helps.ParseOpenAIUsage(body))
 	}
 	reporter.EnsurePublished(ctx)
-	var param any
-	out := sdktranslator.TranslateNonStream(ctx, to, responseFormat, req.Model, helps.ApplyPatchOriginalRequest(req, opts), translated, body, &param)
-	if helps.ApplyPatchTranslationError(param) != nil || len(out) == 0 {
-		err = statusErr{code: http.StatusBadGateway, msg: helps.ApplyPatchUpstreamErrorMessage}
-		return resp, err
-	}
 	if responseFormat == sdktranslator.FormatOpenAIResponse {
 		out = helps.EnsureResponsesUsageDetails(out)
 	}
@@ -211,25 +218,27 @@ func (e *CodeBuddyExecutor) Execute(ctx context.Context, auth *cliproxyauth.Auth
 
 // aggregateCodeBuddyStream consumes an OpenAI-compatible SSE stream and folds
 // the chunks into a single non-stream chat completion payload. Reasoning
-// deltas (reasoning_content) are preserved on the first choice message.
+// deltas and tool calls are kept separate for each choice index.
 func aggregateCodeBuddyStream(r io.Reader) ([]byte, usage.Detail, bool, error) {
 	var zeroUsageDetail usage.Detail
 	reader := helps.NewCodeBuddySSEReader(r)
 
-	var (
-		chatID      string
-		created     int64
-		model       string
+	type aggregatedChoice struct {
 		content     strings.Builder
 		reasoning   strings.Builder
 		finishCause string
-		usageRaw    []byte
-		usage       usage.Detail
-		hasUsage    bool
-		sawChoice   bool
-		sawDone     bool
-		toolCalls   = map[int]map[string]any{}
-		toolArgBuf  = map[int]*strings.Builder{}
+		toolCalls   map[int]map[string]any
+		toolArgBuf  map[int]*strings.Builder
+	}
+	var (
+		chatID         string
+		created        int64
+		model          string
+		usageRaw       []byte
+		usage          usage.Detail
+		hasUsage       bool
+		sawDone        bool
+		choicesByIndex = map[int]*aggregatedChoice{}
 	)
 
 	for {
@@ -245,6 +254,7 @@ func aggregateCodeBuddyStream(r io.Reader) ([]byte, usage.Detail, bool, error) {
 			continue
 		}
 		if streamErr, isError := openAICompatStreamDataError(data, frame.Event); isError {
+			streamErr.retryAfter = helps.CodeBuddyRetryAfter(streamErr.code, data)
 			return nil, usage, hasUsage, streamErr
 		}
 		if openAICompatErrorEvent(frame.Event) {
@@ -276,21 +286,29 @@ func aggregateCodeBuddyStream(r io.Reader) ([]byte, usage.Detail, bool, error) {
 			continue
 		}
 		for _, choice := range choices.Array() {
-			sawChoice = true
+			index := int(choice.Get("index").Int())
+			state := choicesByIndex[index]
+			if state == nil {
+				state = &aggregatedChoice{
+					toolCalls:  map[int]map[string]any{},
+					toolArgBuf: map[int]*strings.Builder{},
+				}
+				choicesByIndex[index] = state
+			}
 			delta := choice.Get("delta")
 			if rc := delta.Get("reasoning_content"); rc.Exists() {
-				reasoning.WriteString(rc.String())
+				state.reasoning.WriteString(rc.String())
 			}
 			if c := delta.Get("content"); c.Exists() {
-				content.WriteString(c.String())
+				state.content.WriteString(c.String())
 			}
 			for _, tc := range delta.Get("tool_calls").Array() {
 				idx := int(tc.Get("index").Int())
-				entry, ok := toolCalls[idx]
+				entry, ok := state.toolCalls[idx]
 				if !ok {
 					entry = map[string]any{"type": "function"}
-					toolCalls[idx] = entry
-					toolArgBuf[idx] = &strings.Builder{}
+					state.toolCalls[idx] = entry
+					state.toolArgBuf[idx] = &strings.Builder{}
 				}
 				if id := tc.Get("id"); id.Exists() && id.String() != "" {
 					entry["id"] = id.String()
@@ -300,45 +318,59 @@ func aggregateCodeBuddyStream(r io.Reader) ([]byte, usage.Detail, bool, error) {
 					entry["function"] = map[string]any{"name": name.String()}
 				}
 				if args := fn.Get("arguments"); args.Exists() {
-					toolArgBuf[idx].WriteString(args.String())
+					state.toolArgBuf[idx].WriteString(args.String())
 				}
 			}
 			if fr := choice.Get("finish_reason"); fr.Exists() && fr.String() != "" {
-				finishCause = fr.String()
+				state.finishCause = fr.String()
 			}
 		}
 	}
-	if !sawChoice || (!sawDone && finishCause == "") {
+	if len(choicesByIndex) == 0 {
 		return nil, usage, hasUsage, statusErr{code: http.StatusBadGateway, msg: "upstream stream closed before completion", streamTruncated: true}
 	}
 
-	message := map[string]any{"role": "assistant", "content": content.String()}
-	if reasoning.Len() > 0 {
-		message["reasoning_content"] = reasoning.String()
+	choiceIndices := make([]int, 0, len(choicesByIndex))
+	for index := range choicesByIndex {
+		choiceIndices = append(choiceIndices, index)
 	}
-	if len(toolCalls) > 0 {
-		ordered := make([]any, 0, len(toolCalls))
-		indices := make([]int, 0, len(toolCalls))
-		for index := range toolCalls {
-			indices = append(indices, index)
+	sort.Ints(choiceIndices)
+	resultChoices := make([]any, 0, len(choiceIndices))
+	for _, index := range choiceIndices {
+		state := choicesByIndex[index]
+		if !sawDone && state.finishCause == "" {
+			return nil, usage, hasUsage, statusErr{code: http.StatusBadGateway, msg: "upstream stream closed before completion", streamTruncated: true}
 		}
-		sort.Ints(indices)
-		for _, i := range indices {
-			entry := toolCalls[i]
-			if fn, ok := entry["function"].(map[string]any); ok {
-				fn["arguments"] = toolArgBuf[i].String()
+		message := map[string]any{"role": "assistant", "content": state.content.String()}
+		if state.reasoning.Len() > 0 {
+			message["reasoning_content"] = state.reasoning.String()
+		}
+		if len(state.toolCalls) > 0 {
+			ordered := make([]any, 0, len(state.toolCalls))
+			indices := make([]int, 0, len(state.toolCalls))
+			for toolIndex := range state.toolCalls {
+				indices = append(indices, toolIndex)
 			}
-			ordered = append(ordered, entry)
+			sort.Ints(indices)
+			for _, i := range indices {
+				entry := state.toolCalls[i]
+				if fn, ok := entry["function"].(map[string]any); ok {
+					fn["arguments"] = state.toolArgBuf[i].String()
+				}
+				ordered = append(ordered, entry)
+			}
+			message["tool_calls"] = ordered
 		}
-		message["tool_calls"] = ordered
-	}
-	if finishCause == "" {
-		finishCause = "stop"
+		finishCause := state.finishCause
+		if finishCause == "" {
+			finishCause = "stop"
+		}
+		resultChoices = append(resultChoices, map[string]any{"index": index, "message": message, "finish_reason": finishCause})
 	}
 
 	result := map[string]any{
 		"object":  "chat.completion",
-		"choices": []any{map[string]any{"index": 0, "message": message, "finish_reason": finishCause}},
+		"choices": resultChoices,
 	}
 	if chatID != "" {
 		result["id"] = chatID
@@ -460,7 +492,11 @@ func (e *CodeBuddyExecutor) ExecuteStream(ctx context.Context, auth *cliproxyaut
 		if errClose := httpResp.Body.Close(); errClose != nil {
 			log.Errorf("codebuddy executor: close response body error: %v", errClose)
 		}
-		return nil, newOpenAICompatStatusError(httpResp.StatusCode, httpResp.Header, body)
+		upstreamErr := newOpenAICompatStatusError(httpResp.StatusCode, httpResp.Header, body)
+		if upstreamErr.retryAfter == nil {
+			upstreamErr.retryAfter = helps.CodeBuddyRetryAfter(httpResp.StatusCode, body)
+		}
+		return nil, upstreamErr
 	}
 
 	out := make(chan cliproxyexecutor.StreamChunk)
@@ -518,6 +554,7 @@ func (e *CodeBuddyExecutor) ExecuteStream(ctx context.Context, auth *cliproxyaut
 			}
 			if !isDone {
 				if streamErr, isError := openAICompatStreamDataError(dataPayload, eventName); isError {
+					streamErr.retryAfter = helps.CodeBuddyRetryAfter(streamErr.code, dataPayload)
 					publishStreamError(streamErr, true)
 					return true
 				}

@@ -2,6 +2,7 @@ package executor
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -104,5 +105,43 @@ func TestCodeBuddyUsageRecordsEffectiveReasoningEffort(t *testing.T) {
 				}
 			})
 		}
+	}
+}
+
+func TestCodeBuddyUsageRecordsConversionFailure(t *testing.T) {
+	for _, hasUsage := range []bool{false, true} {
+		t.Run(fmt.Sprintf("usage=%v", hasUsage), func(t *testing.T) {
+			first, _ := applyPatchTestFrames("chat", "apply_patch")
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "text/event-stream")
+				_, _ = io.WriteString(w, first+"data: {\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"tool_calls\"}]}\n\n")
+				if hasUsage {
+					_, _ = io.WriteString(w, "data: {\"choices\":[],\"usage\":{\"prompt_tokens\":5,\"completion_tokens\":2,\"total_tokens\":7}}\n\n")
+				}
+				_, _ = io.WriteString(w, "data: [DONE]\n\n")
+			}))
+			defer server.Close()
+			alias := t.Name()
+			capture := &codexResponseModelUsageCapture{alias: alias, records: make(chan coreusage.Record, 4)}
+			coreusage.RegisterNamedPlugin(t.Name(), capture)
+			t.Cleanup(func() { coreusage.RegisterNamedPlugin(t.Name(), codexResponseModelNoopUsagePlugin{}) })
+			ctx := coreusage.WithRequestedModelAlias(context.Background(), alias)
+			auth := &cliproxyauth.Auth{Attributes: map[string]string{"base_url": server.URL}, Metadata: map[string]any{"access_token": "test-token"}}
+			payload := applyPatchTestRequest()
+			_, errExecute := NewCodeBuddyExecutor(&config.Config{}).Execute(ctx, auth,
+				cliproxyexecutor.Request{Model: "glm-5.3", Payload: payload},
+				cliproxyexecutor.Options{SourceFormat: sdktranslator.FormatOpenAIResponse, OriginalRequest: payload})
+			var upstreamErr statusErr
+			if !errors.As(errExecute, &upstreamErr) || upstreamErr.StatusCode() != http.StatusBadGateway {
+				t.Fatalf("conversion error = %v, want 502", errExecute)
+			}
+			record := capture.await(t)
+			if !record.Failed {
+				t.Fatal("conversion failure was recorded as success")
+			}
+			if hasUsage && (record.Detail.InputTokens != 5 || record.Detail.OutputTokens != 2 || record.Detail.TotalTokens != 7) {
+				t.Fatalf("failed attempt lost upstream usage: %+v", record.Detail)
+			}
+		})
 	}
 }

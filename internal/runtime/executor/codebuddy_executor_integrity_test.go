@@ -132,6 +132,64 @@ func TestCodeBuddyAggregateSparseInterleavedTools(t *testing.T) {
 	}
 }
 
+func TestCodeBuddyExecutorMultipleChoices(t *testing.T) {
+	frames := []string{
+		`{"choices":[{"index":7,"delta":{"content":"second","reasoning_content":"reason7","tool_calls":[{"index":0,"id":"call7","function":{"name":"lookup7","arguments":"{\"b\":"}}]}},{"index":2,"delta":{"content":"first","reasoning_content":"reason2","tool_calls":[{"index":0,"id":"call2","function":{"name":"lookup2","arguments":"{\"a\":"}}]}}]}`,
+		`{"choices":[{"index":2,"delta":{"content":"1","tool_calls":[{"index":0,"function":{"arguments":"1}"}}]},"finish_reason":"length"},{"index":7,"delta":{"content":"2","tool_calls":[{"index":0,"function":{"arguments":"2}"}}]},"finish_reason":"tool_calls"}]}`,
+		`{"choices":[],"usage":{"prompt_tokens":10,"completion_tokens":6,"total_tokens":16}}`,
+	}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		for _, frame := range frames {
+			_, _ = fmt.Fprintf(w, "data: %s\n\n", frame)
+		}
+		_, _ = io.WriteString(w, "data: [DONE]\n\n")
+	}))
+	defer server.Close()
+	auth := &cliproxyauth.Auth{Attributes: map[string]string{"base_url": server.URL}, Metadata: map[string]any{"access_token": "test-token"}}
+	payload := []byte(`{"model":"glm-5.3","n":2,"messages":[{"role":"user","content":"hi"}]}`)
+	result, errExecute := NewCodeBuddyExecutor(&config.Config{}).Execute(context.Background(), auth,
+		cliproxyexecutor.Request{Model: "glm-5.3", Payload: payload}, cliproxyexecutor.Options{SourceFormat: sdktranslator.FormatOpenAI})
+	if errExecute != nil {
+		t.Fatal(errExecute)
+	}
+	choices := gjson.GetBytes(result.Payload, "choices").Array()
+	if len(choices) != 2 {
+		t.Fatalf("expected two independent choices: %s", result.Payload)
+	}
+	for i, want := range []struct {
+		index     int64
+		content   string
+		reasoning string
+		finish    string
+		id        string
+		name      string
+		arguments string
+	}{
+		{2, "first1", "reason2", "length", "call2", "lookup2", `{"a":1}`},
+		{7, "second2", "reason7", "tool_calls", "call7", "lookup7", `{"b":2}`},
+	} {
+		choice := choices[i]
+		message := choice.Get("message")
+		tools := message.Get("tool_calls").Array()
+		if choice.Get("index").Int() != want.index || message.Get("content").String() != want.content || message.Get("reasoning_content").String() != want.reasoning || choice.Get("finish_reason").String() != want.finish || len(tools) != 1 || tools[0].Get("id").String() != want.id || tools[0].Get("function.name").String() != want.name || tools[0].Get("function.arguments").String() != want.arguments {
+			t.Errorf("choice %d mixed candidate data: %s", want.index, choice.Raw)
+		}
+	}
+	if total := gjson.GetBytes(result.Payload, "usage.total_tokens").Int(); total != 16 {
+		t.Fatalf("total usage = %d, want 16", total)
+	}
+}
+
+func TestCodeBuddyAggregateRequiresAllChoicesFinished(t *testing.T) {
+	stream := "data: {\"choices\":[{\"index\":0,\"delta\":{\"content\":\"done\"},\"finish_reason\":\"stop\"},{\"index\":1,\"delta\":{\"content\":\"partial\"}}]}\n\n"
+	_, _, _, errAggregate := aggregateCodeBuddyStream(strings.NewReader(stream))
+	var truncated cliproxyexecutor.StreamTruncatedError
+	if !errors.As(errAggregate, &truncated) || !truncated.IsStreamTruncated() {
+		t.Fatalf("unfinished second choice was accepted: %v", errAggregate)
+	}
+}
+
 func TestCodeBuddyApplyPatchIntegrity(t *testing.T) {
 	for _, streaming := range []bool{false, true} {
 		for _, complete := range []bool{false, true} {
