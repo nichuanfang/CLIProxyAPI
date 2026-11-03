@@ -934,6 +934,44 @@ def get_model(catalog_data: Dict[str, Any], slug: str) -> Optional[Dict[str, Any
     return None
 
 
+GPT_TEMPLATE_PRIORITY = (
+    "gpt-6.1-sol",
+    "gpt-6-astra",
+    "gpt-6-sol",
+    "gpt-6-luna",
+)
+
+
+def is_gpt_slug(slug: str) -> bool:
+    return slug.strip().lower().startswith("gpt-")
+
+
+def select_template_slug(
+    catalog_data: Dict[str, Any],
+    slug: str,
+    requested_template: Optional[str] = None,
+) -> Optional[str]:
+    """Prefer a GPT base for GPT models unless a template was specified."""
+    if requested_template:
+        return requested_template
+
+    models = catalog_data.get("models", [])
+    if is_gpt_slug(slug):
+        for candidate in GPT_TEMPLATE_PRIORITY:
+            if get_model(catalog_data, candidate):
+                return candidate
+        for model in models:
+            candidate = str(model.get("slug", ""))
+            if is_gpt_slug(candidate):
+                return candidate
+        raise ValueError(
+            f"No GPT template model is available in the catalog to add '{slug}'. "
+            "Add a GPT model first or pass an explicit template."
+        )
+
+    return models[0].get("slug") if models else None
+
+
 def add_model(
     catalog_data: Dict[str, Any],
     new_model_config: Dict[str, Any],
@@ -950,13 +988,12 @@ def add_model(
 
     models = catalog_data.setdefault("models", [])
 
+    resolved_template = select_template_slug(catalog_data, slug, template_slug)
     base_model = None
-    if template_slug:
-        base_model = get_model(catalog_data, template_slug)
+    if resolved_template:
+        base_model = get_model(catalog_data, resolved_template)
         if not base_model:
-            raise ValueError(f"Template model '{template_slug}' not found in catalog")
-    elif models:
-        base_model = models[0]
+            raise ValueError(f"Template model '{resolved_template}' not found in catalog")
 
     if base_model:
         created_model = copy.deepcopy(base_model)

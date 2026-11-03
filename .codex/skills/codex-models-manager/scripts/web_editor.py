@@ -1103,7 +1103,7 @@ input[type="text"]:focus-visible, input[type="number"]:focus-visible, select:foc
       <div class="form-row" id="template-select-row" style="display: none;">
         <div class="form-col">
           <label for="edit-template-slug">克隆参考模板 (Base Template)</label>
-          <select id="edit-template-slug" name="edit-template-slug" onchange="onTemplateChange()">
+          <select id="edit-template-slug" name="edit-template-slug" onchange="this.dataset.manual = '1'; onTemplateChange()">
             <option value="">-- 选择模板模型 --</option>
           </select>
           <small>新模型将完整继承该模板的系统指令和架构配置</small>
@@ -1113,7 +1113,7 @@ input[type="text"]:focus-visible, input[type="number"]:focus-visible, select:foc
       <div class="form-row">
         <div class="form-col">
           <label for="edit-slug">模型标识 (Slug / ID) *</label>
-          <input type="text" id="edit-slug" name="edit-slug" placeholder="e.g. deepseek-v4.1-flash" autocomplete="off" spellcheck="false">
+          <input type="text" id="edit-slug" name="edit-slug" oninput="onNewModelSlugChange()" placeholder="e.g. deepseek-v4.1-flash" autocomplete="off" spellcheck="false">
           <small>必须与 /v1/models 中的模型 ID 完全一致</small>
         </div>
         <div class="form-col">
@@ -1139,6 +1139,7 @@ input[type="text"]:focus-visible, input[type="number"]:focus-visible, select:foc
             <option value="high">high</option>
             <option value="xhigh">xhigh</option>
             <option value="max">max</option>
+            <option value="ultra">ultra</option>
           </select>
         </div>
         <div class="form-col">
@@ -1188,6 +1189,7 @@ input[type="text"]:focus-visible, input[type="number"]:focus-visible, select:foc
             <label class="checkbox-item"><input type="checkbox" name="reasoning-level" value="high" checked> high</label>
             <label class="checkbox-item"><input type="checkbox" name="reasoning-level" value="xhigh"> xhigh</label>
             <label class="checkbox-item"><input type="checkbox" name="reasoning-level" value="max" checked> max</label>
+            <label class="checkbox-item"><input type="checkbox" name="reasoning-level" value="ultra"> ultra</label>
           </div>
         </div>
       </div>
@@ -2025,9 +2027,10 @@ function openAddModelModal(prefilledSlug = '') {
   document.getElementById('edit-orig-slug').value = '';
   document.getElementById('edit-slug').readOnly = false;
 
-  // 填充模板下拉列表
+  // Populate the available templates.
   const templateSelect = document.getElementById('edit-template-slug');
-  templateSelect.innerHTML = '';
+  templateSelect.innerHTML = '<option value="">-- 选择模板模型 --</option>';
+  templateSelect.dataset.manual = '0';
   (state.catalog.models || []).forEach(m => {
     const opt = document.createElement('option');
     opt.value = m.slug;
@@ -2036,13 +2039,8 @@ function openAddModelModal(prefilledSlug = '') {
   });
   document.getElementById('template-select-row').style.display = 'flex';
 
-  // 智能推荐模板
-  let defaultTmpl = '';
-  if (prefilledSlug.includes('gemini') || prefilledSlug.includes('claude')) {
-    defaultTmpl = (state.catalog.models.find(m => m.slug.includes('gemini')) || state.catalog.models[0] || {}).slug || '';
-  } else {
-    defaultTmpl = (state.catalog.models.find(m => m.slug.includes('deepseek')) || state.catalog.models[0] || {}).slug || '';
-  }
+  // Prefer a GPT template for GPT model IDs.
+  const defaultTmpl = recommendTemplateSlug(prefilledSlug);
   templateSelect.value = defaultTmpl;
 
   document.getElementById('edit-slug').value = prefilledSlug || '';
@@ -2060,7 +2058,31 @@ function openAddModelModal(prefilledSlug = '') {
 }
 
 function formatDisplayName(slug) {
-  return slug.split('-').map(s => s.charAt(0).toUpperCase() + s.slice(1)).join('-');
+  return slug.split('-').map(s => s.toLowerCase() === 'gpt' ? 'GPT' : s.charAt(0).toUpperCase() + s.slice(1)).join('-');
+}
+
+function onNewModelSlugChange() {
+  if (document.getElementById('edit-is-add').value !== '1') return;
+  const select = document.getElementById('edit-template-slug');
+  if (select.dataset.manual === '1') return;
+  select.value = recommendTemplateSlug(document.getElementById('edit-slug').value.trim());
+  onTemplateChange();
+}
+
+function recommendTemplateSlug(slug) {
+  const models = state.catalog.models || [];
+  const lowered = (slug || '').toLowerCase();
+  if (lowered.startsWith('gpt-')) {
+    for (const candidate of ['gpt-6.1-sol', 'gpt-6-astra', 'gpt-6-sol', 'gpt-6-luna']) {
+      if (models.some(m => m.slug === candidate)) return candidate;
+    }
+    const gptModel = models.find(m => m.slug.toLowerCase().startsWith('gpt-'));
+    return gptModel ? gptModel.slug : '';
+  }
+  if (lowered.includes('gemini') || lowered.includes('claude')) {
+    return (models.find(m => m.slug.includes('gemini')) || models[0] || {}).slug || '';
+  }
+  return (models.find(m => m.slug.includes('deepseek')) || models[0] || {}).slug || '';
 }
 
 function onTemplateChange() {
@@ -2070,11 +2092,11 @@ function onTemplateChange() {
 
   document.getElementById('edit-shell-type').value = tmpl.shell_type || 'shell_command';
   document.getElementById('edit-default-reasoning').value = tmpl.default_reasoning_level || 'medium';
-  document.getElementById('edit-context-window').value = tmpl.context_window || 1048576;
-  document.getElementById('edit-max-output-tokens').value = tmpl.max_output_tokens || 131072;
-  document.getElementById('edit-auto-compact').value = tmpl.auto_compact_token_limit || 943718;
+  document.getElementById('edit-context-window').value = tmpl.context_window ?? 1048576;
+  document.getElementById('edit-max-output-tokens').value = tmpl.max_output_tokens ?? '';
+  document.getElementById('edit-auto-compact').value = tmpl.auto_compact_token_limit ?? '';
 
-  // reasoning checkboxes
+  // Copy supported reasoning levels.
   const supported = (tmpl.supported_reasoning_levels || []).map(r => r.effort);
   document.querySelectorAll('#reasoning-checkboxes input').forEach(cb => {
     cb.checked = supported.includes(cb.value);
@@ -2100,8 +2122,8 @@ function openEditModelModal(slug) {
   document.getElementById('edit-visibility').value = m.visibility || 'list';
 
   document.getElementById('edit-context-window').value = m.context_window || 1048576;
-  document.getElementById('edit-max-output-tokens').value = m.max_output_tokens || 131072;
-  document.getElementById('edit-auto-compact').value = m.auto_compact_token_limit || 943718;
+  document.getElementById('edit-max-output-tokens').value = m.max_output_tokens ?? '';
+  document.getElementById('edit-auto-compact').value = m.auto_compact_token_limit ?? '';
 
   const supported = (m.supported_reasoning_levels || []).map(r => r.effort);
   document.querySelectorAll('#reasoning-checkboxes input').forEach(cb => {
@@ -2186,9 +2208,11 @@ async function submitEditForm() {
   const defaultReasoning = document.getElementById('edit-default-reasoning').value;
   const shellType = document.getElementById('edit-shell-type').value;
   const visibility = document.getElementById('edit-visibility').value;
+  const tmplSlug = isAdd ? document.getElementById('edit-template-slug').value : '';
+  const sourceModel = state.catalog.models.find(m => m.slug === (isAdd ? tmplSlug : origSlug)) || {};
   const contextWindow = parseInt(document.getElementById('edit-context-window').value, 10) || 1048576;
-  const maxOutputTokens = parseInt(document.getElementById('edit-max-output-tokens').value, 10) || 131072;
-  const autoCompact = parseInt(document.getElementById('edit-auto-compact').value, 10) || 943718;
+  const maxOutputTokens = document.getElementById('edit-max-output-tokens').value.trim();
+  const autoCompact = document.getElementById('edit-auto-compact').value.trim();
 
   if (!slug) {
     showToast('Slug 不能为空', 'error');
@@ -2210,14 +2234,13 @@ async function submitEditForm() {
     shell_type: shellType,
     visibility,
     context_window: contextWindow,
-    max_context_window: contextWindow,
-    max_output_tokens: maxOutputTokens,
-    auto_compact_token_limit: autoCompact
+    max_context_window: Math.max(sourceModel.max_context_window || contextWindow, contextWindow),
+    max_output_tokens: maxOutputTokens ? Number(maxOutputTokens) : null,
+    auto_compact_token_limit: autoCompact ? Number(autoCompact) : null
   };
 
   try {
     if (isAdd) {
-      const tmplSlug = document.getElementById('edit-template-slug').value;
       const res = await fetch('/api/models/add', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },

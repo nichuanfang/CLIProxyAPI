@@ -28,6 +28,12 @@ Manage and maintain the model catalog for the Codex desktop application, stored 
 3. **Direct CLI / Silent Execution**:
    When the user asks concrete non-visual operational tasks (e.g. "列出模型", "帮我添加 gemini-3-flash", "把 deepseek 移到最前面", "删除某个模型"), use `catalog_cli.py` directly to execute the change swiftly without launching a browser.
 
+## GPT Model Defaults
+
+When adding a `gpt-*` model without an explicit template, both CLI and web editor prefer an existing GPT template: `gpt-6.1-sol`, `gpt-6-astra`, `gpt-6-sol`, `gpt-6-luna`, then the first other GPT entry. An explicit template always wins. If no GPT template exists, obtain a verified Codex GPT descriptor first or specify a template explicitly; do not silently clone DeepSeek, Gemini, or another family.
+
+Treat cloned capabilities as provisional defaults. Verify exact-model reasoning levels, context limits, transport/tool flags, and service tiers against the current Codex catalog when available. `/v1/models` may only supply IDs and does not establish these capabilities. Keep API specifications separate from Codex client defaults, and preserve user overrides during an audit unless changes are requested. In particular, do not replace a missing/null compaction threshold with a fixed value larger than the context window, or collapse `max_context_window` to `context_window` during form saves.
+
 ## Capabilities
 
 - **Upstream Discovery**: Fetch live model lists from any OpenAI-compatible `/v1/models` endpoint (such as CLIProxyAPI at `http://127.0.0.1:8317/v1/models`), comparing what is currently enabled versus available.

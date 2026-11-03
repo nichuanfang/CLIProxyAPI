@@ -79,11 +79,12 @@ def cmd_add(args: argparse.Namespace) -> None:
         new_cfg["visibility"] = args.visibility
 
     try:
-        added = core.add_model(catalog, new_cfg, template_slug=args.template)
+        template_slug = core.select_template_slug(catalog, slug, args.template)
+        added = core.add_model(catalog, new_cfg, template_slug=template_slug)
         saved_path = core.save_catalog(catalog, args.catalog, do_backup=not args.no_backup)
         print(f"[Success] Model '{slug}' added successfully!")
         print(f"  Display Name : {added.get('display_name')}")
-        print(f"  Template     : {args.template or 'default'}")
+        print(f"  Template     : {template_slug or 'default'}")
         print(f"  Priority     : {added.get('priority')}")
         print(f"  Catalog saved: {saved_path}")
     except Exception as e:
@@ -249,7 +250,7 @@ def main():
     p_add.add_argument("slug", help="Model slug/ID (must match upstream model id)")
     p_add.add_argument("--name", "-n", help="Display name")
     p_add.add_argument("--desc", "-d", help="Description")
-    p_add.add_argument("--template", "-t", help="Template model slug to clone from (e.g. deepseek-v4.1-flash)")
+    p_add.add_argument("--template", "-t", help="Template model slug to clone from (GPT models default to a GPT template)")
     p_add.add_argument("--priority", "-p", type=int, help="Priority integer")
     p_add.add_argument("--reasoning", "-r", help="Default reasoning level (none, low, medium, high, max)")
     p_add.add_argument("--shell", "-s", choices=["shell_command", "unified_exec"], help="Shell type")

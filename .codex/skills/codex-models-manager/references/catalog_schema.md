@@ -58,8 +58,11 @@ The `id` field maps directly to the catalog `slug`.
 
 ## Cloning Strategy for Adding New Models
 When adding an upstream model from `/v1/models`, select an existing model with similar architecture as a base template:
+- **GPT models (`gpt-*`)**: prefer an existing GPT descriptor; automatic selection tries `gpt-6.1-sol`, `gpt-6-astra`, `gpt-6-sol`, `gpt-6-luna`, then any other GPT entry. Explicit template selection overrides this order. No GPT template means automatic addition fails instead of borrowing another family's capabilities.
 - **Fast / Agentic models**: clone `deepseek-v4.1-flash` or `space-bunny`
 - **Large Context / Reasoning models**: clone `glm-5.3-flashx` or `kimi-k3-2`
 - **Multimodal / Thinking models**: clone `gemini-3.8-flash-high`
 
 Clone deep-copies the entire structure (including `model_messages`), then replaces `slug`, `display_name`, `description`, `priority`, and any custom reasoning levels.
+
+The shared instruction text still follows the `{template}` sidecar workflow. Preserve distinct current/maximum context windows, missing/null optional token limits, and every reasoning level supplied by the template (including Codex-specific `ultra`). A cloned descriptor is a starting point, not proof of the new model's capabilities. Confirm exact-model values against the current Codex catalog rather than inferring them from a model ID or API limits.
