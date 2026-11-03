@@ -149,25 +149,53 @@ func TestRefreshTokenErrors(t *testing.T) {
 
 func TestApplyChatHeaders(t *testing.T) {
 	req, _ := http.NewRequest(http.MethodPost, "https://example.test", strings.NewReader("{}"))
-	ApplyChatHeaders(req, "token", true)
+	ApplyChatHeaders(req, "token", true, "conv-123")
 
 	want := map[string]string{
-		"Authorization":     "Bearer token",
-		"X-Agent-Intent":    "craft",
-		"X-IDE-Type":        "CodeBuddyIDE",
-		"X-IDE-Version":     "4.9.7",
-		"X-Product-Version": "4.9.7",
-		"X-Env-ID":          "production",
-		"X-Domain":          "www.codebuddy.cn",
-		"X-Product":         "SaaS",
-		"User-Agent":        "CodeBuddyIDE/4.9.7 CodeBuddy/4.9.7",
-		"Content-Type":      "application/json;charset=UTF-8",
-		"Accept":            "text/event-stream",
+		"Authorization":             "Bearer token",
+		"X-Agent-Intent":            "craft",
+		"X-IDE-Type":                "CodeBuddyIDE",
+		"X-IDE-Version":             defaultIDEVersion,
+		"X-Product-Version":         defaultIDEVersion,
+		"X-Env-ID":                  "production",
+		"X-Domain":                  "www.codebuddy.cn",
+		"X-Product":                 "SaaS",
+		"User-Agent":                "CodeBuddyIDE/" + defaultIDEVersion + " CodeBuddy/" + defaultIDEVersion,
+		"Content-Type":              "application/json;charset=UTF-8",
+		"Accept":                    "text/event-stream",
+		"X-Conversation-ID":         "conv-123",
+		"X-Request-ID":              req.Header.Get("X-Conversation-Message-ID"),
+		"X-Conversation-Request-ID": req.Header.Get("X-Conversation-Message-ID"),
 	}
 	for key, value := range want {
 		if got := req.Header.Get(key); got != value {
 			t.Fatalf("%s = %q, want %q", key, got, value)
 		}
+	}
+	// The message id must look like the 32-char hyphenless hex the official
+	// client generates, never a bare UUID.
+	if msgID := req.Header.Get("X-Conversation-Message-ID"); len(msgID) != 32 || strings.Contains(msgID, "-") {
+		t.Fatalf("X-Conversation-Message-ID = %q, want 32-char hyphenless hex", msgID)
+	}
+}
+
+func TestApplyChatHeadersOmitsEmptyConversationID(t *testing.T) {
+	req, _ := http.NewRequest(http.MethodPost, "https://example.test", strings.NewReader("{}"))
+	ApplyChatHeaders(req, "token", true, "  ")
+
+	if got := req.Header.Get("X-Conversation-ID"); got != "" {
+		t.Fatalf("X-Conversation-ID = %q, want empty", got)
+	}
+}
+
+func TestApplyChatHeadersRegeneratesMessageID(t *testing.T) {
+	first, _ := http.NewRequest(http.MethodPost, "https://example.test", strings.NewReader("{}"))
+	second, _ := http.NewRequest(http.MethodPost, "https://example.test", strings.NewReader("{}"))
+	ApplyChatHeaders(first, "token", true, "conv-123")
+	ApplyChatHeaders(second, "token", true, "conv-123")
+
+	if first.Header.Get("X-Conversation-Message-ID") == second.Header.Get("X-Conversation-Message-ID") {
+		t.Fatal("per-request message id must not be reused across requests")
 	}
 }
 
