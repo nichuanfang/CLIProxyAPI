@@ -50,30 +50,8 @@ func (e *CodeBuddyExecutor) PrepareRequest(req *http.Request, auth *cliproxyauth
 	if token == "" {
 		token = codeBuddyAPIKey(auth)
 	}
-	codebuddyauth.ApplyChatHeaders(req, token, false, codeBuddyConversationID(req.Context()))
+	codebuddyauth.ApplyChatHeaders(req, token, false)
 	return nil
-}
-
-// codeBuddyConversationID returns the conversation identity echoed upstream as
-// X-Conversation-ID. The value stays stable across the turns of one client
-// session so upstream channel verification sees a coherent conversation.
-//
-// The internal session identity carries proxy-side namespace prefixes such as
-// "claude:" or "session:" that the official client never sends. Upstream expects
-// a bare UUID, so unprefixed values are passed through and prefixed ones are
-// folded into a deterministic UUID instead of leaking the proxy's naming scheme.
-func codeBuddyConversationID(ctx context.Context) string {
-	if ctx == nil {
-		return ""
-	}
-	sessionID := strings.TrimSpace(util.SessionIDFromContext(ctx))
-	if sessionID == "" {
-		return ""
-	}
-	if parsed, errParse := uuid.Parse(sessionID); errParse == nil {
-		return parsed.String()
-	}
-	return uuid.NewSHA1(uuid.NameSpaceOID, []byte("cli-proxy-api:codebuddy:conversation\x00"+sessionID)).String()
 }
 
 // HttpRequest injects CodeBuddy credentials into a native request and executes it.
@@ -157,7 +135,7 @@ func (e *CodeBuddyExecutor) Execute(ctx context.Context, auth *cliproxyauth.Auth
 		err = fmt.Errorf("codebuddy executor: create request failed: %w", errNew)
 		return resp, err
 	}
-	codebuddyauth.ApplyChatHeaders(httpReq, token, true, codeBuddyConversationID(ctx))
+	codebuddyauth.ApplyChatHeaders(httpReq, token, true)
 	var attrs map[string]string
 	if auth != nil {
 		attrs = auth.Attributes
@@ -447,7 +425,7 @@ func (e *CodeBuddyExecutor) ExecuteStream(ctx context.Context, auth *cliproxyaut
 	if errNew != nil {
 		return nil, fmt.Errorf("codebuddy executor: create request failed: %w", errNew)
 	}
-	codebuddyauth.ApplyChatHeaders(httpReq, token, true, codeBuddyConversationID(ctx))
+	codebuddyauth.ApplyChatHeaders(httpReq, token, true)
 	var streamAttrs map[string]string
 	if auth != nil {
 		streamAttrs = auth.Attributes
