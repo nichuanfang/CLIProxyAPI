@@ -121,7 +121,6 @@ func (e *CodeBuddyExecutor) Execute(ctx context.Context, auth *cliproxyauth.Auth
 	if err != nil {
 		return resp, err
 	}
-	reporter.SetTranslatedReasoningEffort(translated, to.String())
 	translated = helps.SetBoolIfDifferent(translated, "stream", true)
 	translated = helps.SetBoolIfDifferent(translated, "stream_options.include_usage", true)
 	if codeBuddyCompactionSummaryFromContext(ctx) {
@@ -129,6 +128,7 @@ func (e *CodeBuddyExecutor) Execute(ctx context.Context, auth *cliproxyauth.Auth
 	}
 	translated = helps.EnsureCodeBuddyReasoningEffort(translated, baseModel)
 	translated = helps.ApplyPayloadConfigWithRequest(e.cfg, baseModel, to.String(), from.String(), "", translated, originalTranslated, requestedModel, requestPath, opts.Headers)
+	reporter.SetTranslatedReasoningEffort(translated, to.String())
 
 	httpReq, errNew := http.NewRequestWithContext(ctx, http.MethodPost, baseURL+codebuddyauth.ChatPath, bytes.NewReader(translated))
 	if errNew != nil {
@@ -417,9 +417,9 @@ func (e *CodeBuddyExecutor) ExecuteStream(ctx context.Context, auth *cliproxyaut
 		return nil, err
 	}
 	translated = helps.SetBoolIfDifferent(translated, "stream_options.include_usage", true)
-	reporter.SetTranslatedReasoningEffort(translated, to.String())
 	translated = helps.EnsureCodeBuddyReasoningEffort(translated, baseModel)
 	translated = helps.ApplyPayloadConfigWithRequest(e.cfg, baseModel, to.String(), from.String(), "", translated, originalTranslated, requestedModel, requestPath, opts.Headers)
+	reporter.SetTranslatedReasoningEffort(translated, to.String())
 
 	httpReq, errNew := http.NewRequestWithContext(ctx, http.MethodPost, baseURL+codebuddyauth.ChatPath, bytes.NewReader(translated))
 	if errNew != nil {
@@ -656,6 +656,7 @@ func (e *CodeBuddyExecutor) CountTokens(ctx context.Context, auth *cliproxyauth.
 	}
 
 	translated = helps.StripCodeBuddyClaudeCodeIdentity(translated)
+	translated = helps.EnsureCodeBuddyReasoningEffort(translated, baseModel)
 	translated = helps.NewPayloadFinalizer(e.cfg, e.Identifier(), baseModel, to.String(), "", originalTranslated, req, opts)(translated)
 	enc, err := helps.TokenizerForModel(baseModel)
 	if err != nil {
