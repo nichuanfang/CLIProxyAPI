@@ -5881,6 +5881,64 @@
         ],
         "zero_allowed": true
       }
+    },
+    {
+      "id": "hy4free",
+      "object": "model",
+      "created": 1780000000,
+      "owned_by": "codebuddy",
+      "type": "codebuddy",
+      "display_name": "Hy4",
+      "name": "hy4free",
+      "description": "Latest Flagship Model: Agentic and Multimodal Expertise",
+      "context_length": 960000,
+      "max_completion_tokens": 64000,
+      "supportedInputModalities": [
+        "text",
+        "image"
+      ],
+      "supportedOutputModalities": [
+        "text"
+      ],
+      "thinking": {
+        "levels": [
+          "low",
+          "medium",
+          "high",
+          "max",
+          "none"
+        ],
+        "zero_allowed": true
+      }
+    },
+    {
+      "id": "hy4std",
+      "object": "model",
+      "created": 1780000000,
+      "owned_by": "codebuddy",
+      "type": "codebuddy",
+      "display_name": "Hy4",
+      "name": "hy4std",
+      "description": "Latest Flagship Model: Agentic and Multimodal Expertise",
+      "context_length": 960000,
+      "max_completion_tokens": 64000,
+      "supportedInputModalities": [
+        "text",
+        "image"
+      ],
+      "supportedOutputModalities": [
+        "text"
+      ],
+      "thinking": {
+        "levels": [
+          "low",
+          "medium",
+          "high",
+          "max",
+          "none"
+        ],
+        "zero_allowed": true
+      }
     }
   ]
 }

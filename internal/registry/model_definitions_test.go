@@ -405,6 +405,8 @@ func TestCodeBuddyModels(t *testing.T) {
 		"mimo-v2.6-pro",
 		"hunyuan-chat",
 		"kimi-k3-2",
+		"hy4free",
+		"hy4std",
 	}
 	models := GetCodeBuddyModels()
 	if len(models) != len(want) {
