@@ -8,12 +8,12 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/MoeForge/moego/ojson"
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/config"
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/registry"
 	cliproxyauth "github.com/router-for-me/CLIProxyAPI/v8/sdk/cliproxy/auth"
 	cliproxyexecutor "github.com/router-for-me/CLIProxyAPI/v8/sdk/cliproxy/executor"
 	sdktranslator "github.com/router-for-me/CLIProxyAPI/v8/sdk/translator"
-	"github.com/tidwall/gjson"
 )
 
 func TestCodeBuddyResponsesReasoningEffort(t *testing.T) {
@@ -93,17 +93,17 @@ func TestCodeBuddyResponsesReasoningEffort(t *testing.T) {
 						t.Fatal(errExecute)
 					}
 					body := <-bodies
-					effort := gjson.GetBytes(body, "reasoning_effort")
+					effort := ojson.GetBytes(body, "reasoning_effort")
 					if effort.String() != tc.want || (tc.want == "" && effort.Exists()) {
 						t.Fatalf("upstream reasoning_effort = %s, want %q: %s", effort.Raw, tc.want, body)
 					}
-					if got := gjson.GetBytes(body, "model").String(); got != model {
+					if got := ojson.GetBytes(body, "model").String(); got != model {
 						t.Fatalf("upstream model = %q, want %q", got, model)
 					}
-					if got := gjson.GetBytes(body, "max_tokens").Int(); got != int64(modelCase.output) {
+					if got := ojson.GetBytes(body, "max_tokens").Int(); got != int64(modelCase.output) {
 						t.Fatalf("upstream max_tokens = %d, want %d: %s", got, modelCase.output, body)
 					}
-					if gjson.GetBytes(body, "reasoning").Exists() || gjson.GetBytes(body, "max_output_tokens").Exists() {
+					if ojson.GetBytes(body, "reasoning").Exists() || ojson.GetBytes(body, "max_output_tokens").Exists() {
 						t.Fatalf("Responses-only parameters leaked upstream: %s", body)
 					}
 				})

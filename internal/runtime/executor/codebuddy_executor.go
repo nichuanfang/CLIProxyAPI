@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/MoeForge/moego/ojson"
 	"github.com/google/uuid"
 	codebuddyauth "github.com/router-for-me/CLIProxyAPI/v8/internal/auth/codebuddy"
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/config"
@@ -22,8 +23,6 @@ import (
 	"github.com/router-for-me/CLIProxyAPI/v8/sdk/cliproxy/usage"
 	sdktranslator "github.com/router-for-me/CLIProxyAPI/v8/sdk/translator"
 	log "github.com/sirupsen/logrus"
-	"github.com/tidwall/gjson"
-	"github.com/tidwall/sjson"
 )
 
 var _ cliproxyauth.ProviderExecutor = (*CodeBuddyExecutor)(nil)
@@ -267,21 +266,21 @@ func aggregateCodeBuddyStream(r io.Reader) ([]byte, usage.Detail, bool, error) {
 			sawDone = true
 			break
 		}
-		if id := gjson.GetBytes(data, "id"); id.Exists() && chatID == "" {
+		if id := ojson.GetBytes(data, "id"); id.Exists() && chatID == "" {
 			chatID = id.String()
 		}
-		if c := gjson.GetBytes(data, "created"); c.Exists() && created == 0 {
+		if c := ojson.GetBytes(data, "created"); c.Exists() && created == 0 {
 			created = c.Int()
 		}
-		if m := gjson.GetBytes(data, "model"); m.Exists() && model == "" {
+		if m := ojson.GetBytes(data, "model"); m.Exists() && model == "" {
 			model = m.String()
 		}
-		if u := gjson.GetBytes(data, "usage"); u.Exists() && u.IsObject() {
+		if u := ojson.GetBytes(data, "usage"); u.Exists() && u.IsObject() {
 			usageRaw = append([]byte(nil), data...)
 			usage = helps.ParseOpenAIUsage(data)
 			hasUsage = true
 		}
-		choices := gjson.GetBytes(data, "choices")
+		choices := ojson.GetBytes(data, "choices")
 		if !choices.Exists() || !choices.IsArray() {
 			continue
 		}
@@ -382,15 +381,15 @@ func aggregateCodeBuddyStream(r io.Reader) ([]byte, usage.Detail, bool, error) {
 		result["model"] = model
 	}
 	if usageRaw != nil {
-		usageNode := gjson.GetBytes(usageRaw, "usage")
+		usageNode := ojson.GetBytes(usageRaw, "usage")
 		usageJSON := []byte(usageNode.Raw)
 		// Mirror Responses-style aliases so downstream consumers (compaction,
 		// usage accounting) can read either OpenAI Chat or Responses field names.
 		if pt := usageNode.Get("prompt_tokens"); pt.Exists() {
-			usageJSON, _ = sjson.SetBytes(usageJSON, "input_tokens", pt.Int())
+			usageJSON, _ = ojson.SetBytes(usageJSON, "input_tokens", pt.Int())
 		}
 		if ct := usageNode.Get("completion_tokens"); ct.Exists() {
-			usageJSON, _ = sjson.SetBytes(usageJSON, "output_tokens", ct.Int())
+			usageJSON, _ = ojson.SetBytes(usageJSON, "output_tokens", ct.Int())
 		}
 		result["usage"] = json.RawMessage(usageJSON)
 	}
@@ -562,7 +561,7 @@ func (e *CodeBuddyExecutor) ExecuteStream(ctx context.Context, auth *cliproxyaut
 					publishStreamError(statusErr{code: http.StatusBadGateway, msg: "upstream returned an unframed response", streamTruncated: true}, false)
 					return true
 				}
-				if len(gjson.GetBytes(dataPayload, "choices").Array()) > 0 {
+				if len(ojson.GetBytes(dataPayload, "choices").Array()) > 0 {
 					seenChoice = true
 				}
 				seenFinish = seenFinish || openAICompatChunkHasFinishReason(dataPayload)
@@ -718,12 +717,12 @@ func (e *CodeBuddyExecutor) SupportsApplyPatch() bool { return e != nil }
 // always enabled without an OpenAICompatibility gate.
 func (e *CodeBuddyExecutor) applyPromptCacheKey(ctx context.Context, from sdktranslator.Format, baseModel string, req cliproxyexecutor.Request, opts cliproxyexecutor.Options, translated []byte) ([]byte, error) {
 	for _, payload := range [][]byte{req.Payload, opts.OriginalRequest, translated} {
-		if promptCacheKey := strings.TrimSpace(gjson.GetBytes(payload, "prompt_cache_key").String()); promptCacheKey != "" {
+		if promptCacheKey := strings.TrimSpace(ojson.GetBytes(payload, "prompt_cache_key").String()); promptCacheKey != "" {
 			return helps.SetStringIfDifferent(translated, "prompt_cache_key", promptCacheKey), nil
 		}
 	}
 
-	modelName := strings.TrimSpace(gjson.GetBytes(translated, "model").String())
+	modelName := strings.TrimSpace(ojson.GetBytes(translated, "model").String())
 	if modelName == "" {
 		modelName = baseModel
 	}

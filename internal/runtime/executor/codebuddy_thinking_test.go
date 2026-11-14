@@ -12,13 +12,12 @@ import (
 	"sync/atomic"
 	"testing"
 
+	"github.com/MoeForge/moego/ojson"
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/config"
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/runtime/executor/helps"
 	cliproxyauth "github.com/router-for-me/CLIProxyAPI/v8/sdk/cliproxy/auth"
 	cliproxyexecutor "github.com/router-for-me/CLIProxyAPI/v8/sdk/cliproxy/executor"
 	sdktranslator "github.com/router-for-me/CLIProxyAPI/v8/sdk/translator"
-	"github.com/tidwall/gjson"
-	"github.com/tidwall/sjson"
 )
 
 func TestCodeBuddyClaudeThinkingScopeAndPayloadRules(t *testing.T) {
@@ -57,7 +56,7 @@ func TestCodeBuddyClaudeThinkingScopeAndPayloadRules(t *testing.T) {
 				exec := NewCodeBuddyExecutor(cfg)
 				auth := &cliproxyauth.Auth{Attributes: map[string]string{"base_url": server.URL}, Metadata: map[string]any{"access_token": "test-token"}}
 				req := cliproxyexecutor.Request{Model: tc.model, Payload: []byte(payload)}
-				req.Payload, _ = sjson.SetBytes(req.Payload, "stream", streaming)
+				req.Payload, _ = ojson.SetBytes(req.Payload, "stream", streaming)
 				opts := cliproxyexecutor.Options{SourceFormat: tc.format, OriginalRequest: req.Payload, Stream: streaming}
 				if streaming {
 					result, errStream := exec.ExecuteStream(context.Background(), auth, req, opts)
@@ -73,7 +72,7 @@ func TestCodeBuddyClaudeThinkingScopeAndPayloadRules(t *testing.T) {
 					t.Fatal(errExecute)
 				}
 				body := <-bodies
-				reasoning := gjson.GetBytes(body, `messages.#(role=="assistant").reasoning_content`)
+				reasoning := ojson.GetBytes(body, `messages.#(role=="assistant").reasoning_content`)
 				if reasoning.String() != tc.reasoning || (tc.reasoning == "" && reasoning.Exists()) {
 					t.Fatalf("reasoning_content = %s, want %q: %s", reasoning.Raw, tc.reasoning, body)
 				}
@@ -124,11 +123,11 @@ func TestCodeBuddyClaudeThinkingToolRoundTrip(t *testing.T) {
 			auth := &cliproxyauth.Auth{Attributes: map[string]string{"base_url": server.URL}, Metadata: map[string]any{"access_token": "test-token"}}
 			payload := []byte(`{"model":"deepseek-v4.1-flash","max_tokens":128,"messages":[{"role":"user","content":"Read a.txt and b.txt, then check their sum."}],"tools":[{"name":"Read","input_schema":{"type":"object","properties":{"path":{"type":"string"}}}},{"name":"Bash","input_schema":{"type":"object","properties":{"command":{"type":"string"}}}}]}`)
 			for index := range frames {
-				payload, _ = sjson.SetBytes(payload, "stream", streaming)
+				payload, _ = ojson.SetBytes(payload, "stream", streaming)
 				req := cliproxyexecutor.Request{Model: "deepseek-v4.1-flash", Payload: payload}
 				response := codeBuddyClaudeThinkingTestTurn(t, exec, auth, req, streaming)
 				body := <-bodies
-				assistants := gjson.GetBytes(body, `messages.#(role=="assistant")#`).Array()
+				assistants := ojson.GetBytes(body, `messages.#(role=="assistant")#`).Array()
 				for historyIndex, assistant := range assistants {
 					want := []string{"Read both inputs.", "Check their sum."}[historyIndex]
 					if assistant.Get("reasoning_content").String() != want {
@@ -139,12 +138,12 @@ func TestCodeBuddyClaudeThinkingToolRoundTrip(t *testing.T) {
 					t.Fatalf("turn %d has %d assistant messages: %s", index, len(assistants), body)
 				}
 				if index > 0 {
-					if gjson.GetBytes(body, "messages.2.tool_call_id").String() != "read-a" || gjson.GetBytes(body, "messages.3.tool_call_id").String() != "read-b" {
+					if ojson.GetBytes(body, "messages.2.tool_call_id").String() != "read-a" || ojson.GetBytes(body, "messages.3.tool_call_id").String() != "read-b" {
 						t.Fatalf("parallel tool results lost alignment: %s", body)
 					}
 				}
 				if index == 2 {
-					if response.Get("stop_reason").String() != "end_turn" || response.Get(`content.#(type=="text").text`).String() != "done" || gjson.GetBytes(body, "messages.5.tool_call_id").String() != "run-test" {
+					if response.Get("stop_reason").String() != "end_turn" || response.Get(`content.#(type=="text").text`).String() != "done" || ojson.GetBytes(body, "messages.5.tool_call_id").String() != "run-test" {
 						t.Fatalf("conversation did not finish after the serial tool result: %s; %s", response.Raw, body)
 					}
 					if response.Get("usage.cache_read_input_tokens").Int() != 20 {
@@ -155,7 +154,7 @@ func TestCodeBuddyClaudeThinkingToolRoundTrip(t *testing.T) {
 				if response.Get("stop_reason").String() != "tool_use" {
 					t.Fatalf("turn %d did not request tools: %s", index, response.Raw)
 				}
-				payload, _ = sjson.SetRawBytes(payload, "messages.-1", []byte(`{"role":"assistant","content":`+response.Get("content").Raw+`}`))
+				payload, _ = ojson.SetRawBytes(payload, "messages.-1", []byte(`{"role":"assistant","content":`+response.Get("content").Raw+`}`))
 				var results []map[string]any
 				for _, tool := range response.Get(`content.#(type=="tool_use")#`).Array() {
 					wantInput := map[string]string{"read-a": "a.txt", "read-b": "b.txt", "run-test": "echo 3"}[tool.Get("id").String()]
@@ -173,13 +172,13 @@ func TestCodeBuddyClaudeThinkingToolRoundTrip(t *testing.T) {
 					t.Fatalf("turn %d returned %d tools, want %d", index, len(results), wantTools)
 				}
 				resultJSON, _ := json.Marshal(map[string]any{"role": "user", "content": results})
-				payload, _ = sjson.SetRawBytes(payload, "messages.-1", resultJSON)
+				payload, _ = ojson.SetRawBytes(payload, "messages.-1", resultJSON)
 			}
 		})
 	}
 }
 
-func codeBuddyClaudeThinkingTestTurn(t *testing.T, exec *CodeBuddyExecutor, auth *cliproxyauth.Auth, req cliproxyexecutor.Request, streaming bool) gjson.Result {
+func codeBuddyClaudeThinkingTestTurn(t *testing.T, exec *CodeBuddyExecutor, auth *cliproxyauth.Auth, req cliproxyexecutor.Request, streaming bool) ojson.Result {
 	t.Helper()
 	opts := cliproxyexecutor.Options{SourceFormat: sdktranslator.FormatClaude, OriginalRequest: req.Payload, Stream: streaming}
 	if !streaming {
@@ -187,7 +186,7 @@ func codeBuddyClaudeThinkingTestTurn(t *testing.T, exec *CodeBuddyExecutor, auth
 		if errExecute != nil {
 			t.Fatal(errExecute)
 		}
-		return gjson.ParseBytes(response.Payload)
+		return ojson.ParseBytes(response.Payload)
 	}
 	result, errStream := exec.ExecuteStream(context.Background(), auth, req, opts)
 	if errStream != nil {
@@ -204,11 +203,11 @@ func codeBuddyClaudeThinkingTestTurn(t *testing.T, exec *CodeBuddyExecutor, auth
 			if !strings.HasPrefix(line, "data: ") {
 				continue
 			}
-			event := gjson.Parse(strings.TrimPrefix(line, "data: "))
+			event := ojson.Parse(strings.TrimPrefix(line, "data: "))
 			if event.Get("type").String() == "message_delta" {
-				response, _ = sjson.SetBytes(response, "stop_reason", event.Get("delta.stop_reason").String())
+				response, _ = ojson.SetBytes(response, "stop_reason", event.Get("delta.stop_reason").String())
 				if usage := event.Get("usage"); usage.Exists() {
-					response, _ = sjson.SetRawBytes(response, "usage", []byte(usage.Raw))
+					response, _ = ojson.SetRawBytes(response, "usage", []byte(usage.Raw))
 				}
 			}
 		}
@@ -217,8 +216,8 @@ func codeBuddyClaudeThinkingTestTurn(t *testing.T, exec *CodeBuddyExecutor, auth
 	if !complete {
 		t.Fatal("Claude stream did not complete its content blocks")
 	}
-	response, _ = sjson.SetRawBytes(response, "content", content)
-	return gjson.ParseBytes(response)
+	response, _ = ojson.SetRawBytes(response, "content", content)
+	return ojson.ParseBytes(response)
 }
 
 func TestCodeBuddyClaudeThinkingCountTokens(t *testing.T) {
@@ -239,7 +238,7 @@ func TestCodeBuddyClaudeThinkingCountTokens(t *testing.T) {
 			if errExpected != nil {
 				t.Fatal(errExpected)
 			}
-			if got := gjson.GetBytes(response.Payload, "input_tokens").Int(); got != want {
+			if got := ojson.GetBytes(response.Payload, "input_tokens").Int(); got != want {
 				t.Fatalf("token-count payload did not preserve thinking before user rules: got %d, want %d", got, want)
 			}
 		})

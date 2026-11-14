@@ -11,11 +11,11 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/MoeForge/moego/ojson"
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/config"
 	cliproxyauth "github.com/router-for-me/CLIProxyAPI/v8/sdk/cliproxy/auth"
 	cliproxyexecutor "github.com/router-for-me/CLIProxyAPI/v8/sdk/cliproxy/executor"
 	sdktranslator "github.com/router-for-me/CLIProxyAPI/v8/sdk/translator"
-	"github.com/tidwall/gjson"
 )
 
 func TestCodeBuddyStreamIntegrity(t *testing.T) {
@@ -93,18 +93,18 @@ func TestCodeBuddyStreamIntegrity(t *testing.T) {
 					if got := errors.As(errResult, &truncated) && truncated.IsStreamTruncated(); got != tc.truncated {
 						t.Errorf("truncated = %v, want %v: %v", got, tc.truncated, errResult)
 					}
-					if gjson.GetBytes(body, "status").String() == "completed" || bytes.Contains(body, []byte(`"type":"response.completed"`)) {
+					if ojson.GetBytes(body, "status").String() == "completed" || bytes.Contains(body, []byte(`"type":"response.completed"`)) {
 						t.Errorf("failed response was completed: %s", body)
 					}
 				} else if !bytes.Contains(body, []byte("hello")) || !bytes.Contains(body, []byte(`"status":"completed"`)) {
 					t.Errorf("missing successful response: %s", body)
 				}
 				if tc.wantUsage {
-					response := gjson.ParseBytes(body)
+					response := ojson.ParseBytes(body)
 					if streaming {
 						for _, frame := range applyPatchTestPayloads(body) {
-							if gjson.GetBytes(frame, "type").String() == "response.completed" {
-								response = gjson.GetBytes(frame, "response")
+							if ojson.GetBytes(frame, "type").String() == "response.completed" {
+								response = ojson.GetBytes(frame, "response")
 							}
 						}
 					}
@@ -126,7 +126,7 @@ func TestCodeBuddyAggregateSparseInterleavedTools(t *testing.T) {
 	if errAggregate != nil {
 		t.Fatal(errAggregate)
 	}
-	tools := gjson.GetBytes(body, "choices.0.message.tool_calls").Array()
+	tools := ojson.GetBytes(body, "choices.0.message.tool_calls").Array()
 	if len(tools) != 2 || tools[0].Get("id").String() != "call-a" || tools[1].Get("id").String() != "call-b" || tools[0].Get("function.arguments").String() != `{"a":1}` || tools[1].Get("function.arguments").String() != `{"b":2}` {
 		t.Fatalf("tool calls lost or interleaved: %s", body)
 	}
@@ -153,7 +153,7 @@ func TestCodeBuddyExecutorMultipleChoices(t *testing.T) {
 	if errExecute != nil {
 		t.Fatal(errExecute)
 	}
-	choices := gjson.GetBytes(result.Payload, "choices").Array()
+	choices := ojson.GetBytes(result.Payload, "choices").Array()
 	if len(choices) != 2 {
 		t.Fatalf("expected two independent choices: %s", result.Payload)
 	}
@@ -176,7 +176,7 @@ func TestCodeBuddyExecutorMultipleChoices(t *testing.T) {
 			t.Errorf("choice %d mixed candidate data: %s", want.index, choice.Raw)
 		}
 	}
-	if total := gjson.GetBytes(result.Payload, "usage.total_tokens").Int(); total != 16 {
+	if total := ojson.GetBytes(result.Payload, "usage.total_tokens").Int(); total != 16 {
 		t.Fatalf("total usage = %d, want 16", total)
 	}
 }
@@ -235,11 +235,11 @@ func TestCodeBuddyApplyPatchIntegrity(t *testing.T) {
 				if errResult != nil {
 					t.Fatal(errResult)
 				}
-				var output gjson.Result
+				var output ojson.Result
 				for _, frame := range applyPatchTestPayloads(body) {
-					if item := gjson.GetBytes(frame, "response.output.0"); item.Exists() {
+					if item := ojson.GetBytes(frame, "response.output.0"); item.Exists() {
 						output = item
-					} else if item := gjson.GetBytes(frame, "output.0"); item.Exists() {
+					} else if item := ojson.GetBytes(frame, "output.0"); item.Exists() {
 						output = item
 					}
 				}

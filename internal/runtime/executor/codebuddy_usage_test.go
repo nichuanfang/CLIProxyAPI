@@ -9,13 +9,13 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/MoeForge/moego/ojson"
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/config"
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/registry"
 	cliproxyauth "github.com/router-for-me/CLIProxyAPI/v8/sdk/cliproxy/auth"
 	cliproxyexecutor "github.com/router-for-me/CLIProxyAPI/v8/sdk/cliproxy/executor"
 	coreusage "github.com/router-for-me/CLIProxyAPI/v8/sdk/cliproxy/usage"
 	sdktranslator "github.com/router-for-me/CLIProxyAPI/v8/sdk/translator"
-	"github.com/tidwall/gjson"
 )
 
 // TestCodeBuddyUsageRecordsEffectiveReasoningEffort guards that both transports
@@ -93,7 +93,7 @@ func TestCodeBuddyUsageRecordsEffectiveReasoningEffort(t *testing.T) {
 					t.Fatalf("Execute: %v", errExecute)
 				}
 
-				if got := gjson.GetBytes(<-bodies, "reasoning_effort").String(); got != tc.want {
+				if got := ojson.GetBytes(<-bodies, "reasoning_effort").String(); got != tc.want {
 					t.Fatalf("upstream reasoning_effort = %q, want %q", got, tc.want)
 				}
 				record := capture.await(t)

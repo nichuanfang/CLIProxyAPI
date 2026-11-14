@@ -3,8 +3,8 @@ package helps
 import (
 	"testing"
 
+	"github.com/MoeForge/moego/ojson"
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/registry"
-	"github.com/tidwall/gjson"
 )
 
 func TestEnsureCodeBuddyReasoningEffort(t *testing.T) {
@@ -54,7 +54,7 @@ func TestEnsureCodeBuddyReasoningEffort(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			got := EnsureCodeBuddyReasoningEffort([]byte(tc.payload), tc.model)
-			effort := gjson.GetBytes(got, "reasoning_effort").String()
+			effort := ojson.GetBytes(got, "reasoning_effort").String()
 			if effort != tc.want {
 				t.Fatalf("reasoning_effort = %q, want %q (payload=%s)", effort, tc.want, got)
 			}
@@ -96,7 +96,7 @@ func TestEnsureCodeBuddyReasoningEffortFollowsCatalog(t *testing.T) {
 	} {
 		t.Run(tc.model, func(t *testing.T) {
 			got := EnsureCodeBuddyReasoningEffort([]byte(`{"model":"`+tc.model+`"}`), tc.model)
-			if effort := gjson.GetBytes(got, "reasoning_effort").String(); effort != tc.want {
+			if effort := ojson.GetBytes(got, "reasoning_effort").String(); effort != tc.want {
 				t.Fatalf("reasoning_effort = %q, want %q (payload=%s)", effort, tc.want, got)
 			}
 		})

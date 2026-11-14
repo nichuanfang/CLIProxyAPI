@@ -8,11 +8,11 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/MoeForge/moego/ojson"
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/config"
 	cliproxyauth "github.com/router-for-me/CLIProxyAPI/v8/sdk/cliproxy/auth"
 	cliproxyexecutor "github.com/router-for-me/CLIProxyAPI/v8/sdk/cliproxy/executor"
 	sdktranslator "github.com/router-for-me/CLIProxyAPI/v8/sdk/translator"
-	"github.com/tidwall/gjson"
 )
 
 func TestCodeBuddyExecutorClaudeCodeIdentity(t *testing.T) {
@@ -92,7 +92,7 @@ func TestCodeBuddyExecutorClaudeCodeIdentity(t *testing.T) {
 					t.Fatal(errExecute)
 				}
 				body := <-bodies
-				system := gjson.GetBytes(body, `messages.#(role=="system")`)
+				system := ojson.GetBytes(body, `messages.#(role=="system")`)
 				if tt.wantSystem == "" {
 					if system.Exists() {
 						t.Fatalf("identity-only system message retained: %s", body)
@@ -109,11 +109,11 @@ func TestCodeBuddyExecutorClaudeCodeIdentity(t *testing.T) {
 						t.Fatalf("system content = %q, want %q: %s", content.String(), tt.wantSystem, body)
 					}
 				}
-				user := gjson.GetBytes(body, `messages.#(role=="user").content`)
+				user := ojson.GetBytes(body, `messages.#(role=="user").content`)
 				if user.IsArray() {
 					user = user.Get("0.text")
 				}
-				if user.String() != userText || gjson.GetBytes(body, "tools.0.function.description").String() != identity {
+				if user.String() != userText || ojson.GetBytes(body, "tools.0.function.description").String() != identity {
 					t.Fatalf("user content or tool description changed: %s", body)
 				}
 			})

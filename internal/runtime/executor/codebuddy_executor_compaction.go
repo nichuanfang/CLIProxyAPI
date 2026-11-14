@@ -5,13 +5,12 @@ import (
 	"fmt"
 	"net/http"
 
+	"github.com/MoeForge/moego/ojson"
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/runtime/executor/helps"
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/thinking"
 	cliproxyauth "github.com/router-for-me/CLIProxyAPI/v8/sdk/cliproxy/auth"
 	cliproxyexecutor "github.com/router-for-me/CLIProxyAPI/v8/sdk/cliproxy/executor"
 	sdktranslator "github.com/router-for-me/CLIProxyAPI/v8/sdk/translator"
-	"github.com/tidwall/gjson"
-	"github.com/tidwall/sjson"
 )
 
 type codeBuddyCompactionSummaryContextKey struct{}
@@ -34,9 +33,9 @@ func codeBuddyCompactionSummaryFromContext(ctx context.Context) bool {
 // finalizeCodeBuddyCompactionSummaryBody stops the summary turn from calling
 // tools: tool_choice none keeps structured tool history valid upstream.
 func finalizeCodeBuddyCompactionSummaryBody(body []byte) []byte {
-	tools := gjson.GetBytes(body, "tools")
+	tools := ojson.GetBytes(body, "tools")
 	if tools.IsArray() && len(tools.Array()) > 0 {
-		out, _ := sjson.SetBytes(body, "tool_choice", "none")
+		out, _ := ojson.SetBytes(body, "tool_choice", "none")
 		return out
 	}
 	return body
@@ -69,7 +68,7 @@ func codeBuddyCompactionSourcePayload(req cliproxyexecutor.Request, opts cliprox
 func (e *CodeBuddyExecutor) executeCodeBuddyCompaction(ctx context.Context, auth *cliproxyauth.Auth, req cliproxyexecutor.Request, opts cliproxyexecutor.Options) (resp cliproxyexecutor.Response, err error) {
 	baseModel := thinking.ParseSuffix(req.Model).ModelName
 	summaryPayload := prepareClaudeCompactionSummaryPayload(codeBuddyCompactionSourcePayload(req, opts), baseModel)
-	summaryPayload, _ = sjson.DeleteBytes(summaryPayload, "stream")
+	summaryPayload, _ = ojson.DeleteBytes(summaryPayload, "stream")
 	// The Responses->Chat translator treats the original request as authoritative
 	// for update-intent normalization; both payload and original must carry the
 	// summary request or the raw compaction payload is forwarded verbatim.

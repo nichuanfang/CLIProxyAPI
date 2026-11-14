@@ -10,12 +10,12 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/MoeForge/moego/ojson"
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/config"
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/runtime/executor/helps"
 	cliproxyauth "github.com/router-for-me/CLIProxyAPI/v8/sdk/cliproxy/auth"
 	cliproxyexecutor "github.com/router-for-me/CLIProxyAPI/v8/sdk/cliproxy/executor"
 	sdktranslator "github.com/router-for-me/CLIProxyAPI/v8/sdk/translator"
-	"github.com/tidwall/gjson"
 )
 
 func TestCodeBuddyCompactionIntegrity(t *testing.T) {
@@ -51,8 +51,8 @@ func TestCodeBuddyCompactionIntegrity(t *testing.T) {
 							if errFrame != nil {
 								t.Fatal(errFrame)
 							}
-							if gjson.GetBytes(frame.Data, "type").String() == "response.completed" {
-								body = []byte(gjson.GetBytes(frame.Data, "response").Raw)
+							if ojson.GetBytes(frame.Data, "type").String() == "response.completed" {
+								body = []byte(ojson.GetBytes(frame.Data, "response").Raw)
 							}
 						}
 					}
@@ -70,18 +70,18 @@ func TestCodeBuddyCompactionIntegrity(t *testing.T) {
 				if errResult != nil {
 					t.Fatal(errResult)
 				}
-				if got := gjson.GetBytes(upstreamBody, "reasoning_effort").String(); got != "high" {
+				if got := ojson.GetBytes(upstreamBody, "reasoning_effort").String(); got != "high" {
 					t.Errorf("summary lost model suffix: %s", upstreamBody)
 				}
-				if !gjson.GetBytes(upstreamBody, "stream_options.include_usage").Bool() {
+				if !ojson.GetBytes(upstreamBody, "stream_options.include_usage").Bool() {
 					t.Errorf("summary did not request usage: %s", upstreamBody)
 				}
 				for path, want := range map[string]int64{"input_tokens": 100, "output_tokens": 20, "total_tokens": 120, "input_tokens_details.cached_tokens": 60, "output_tokens_details.reasoning_tokens": 7} {
-					if got := gjson.GetBytes(body, "usage."+path).Int(); got != want {
+					if got := ojson.GetBytes(body, "usage."+path).Int(); got != want {
 						t.Errorf("usage.%s = %d, want %d; body=%s", path, got, want, body)
 					}
 				}
-				text, errUnseal := helps.UnsealAntigravityCompaction(gjson.GetBytes(body, "output.0.encrypted_content").String())
+				text, errUnseal := helps.UnsealAntigravityCompaction(ojson.GetBytes(body, "output.0.encrypted_content").String())
 				if errUnseal != nil || !strings.Contains(text, "prior work") {
 					t.Errorf("invalid capsule: text=%q, error=%v", text, errUnseal)
 				}
@@ -130,11 +130,11 @@ func TestCodeBuddyPayloadRulesAreFinal(t *testing.T) {
 				} else if _, errExecute := executor.Execute(context.Background(), auth, req, opts); errExecute != nil {
 					t.Fatal(errExecute)
 				}
-				if !gjson.GetBytes(upstreamBody, "barrier_once").Bool() || gjson.GetBytes(upstreamBody, "applied_twice").Exists() || gjson.GetBytes(upstreamBody, "stream").Bool() || gjson.GetBytes(upstreamBody, "tool_choice").String() != "required" {
+				if !ojson.GetBytes(upstreamBody, "barrier_once").Bool() || ojson.GetBytes(upstreamBody, "applied_twice").Exists() || ojson.GetBytes(upstreamBody, "stream").Bool() || ojson.GetBytes(upstreamBody, "tool_choice").String() != "required" {
 					t.Errorf("payload rules overwritten or evaluated twice: %s", upstreamBody)
 				}
 				for _, path := range []string{"stream_options", "reasoning_effort", "prompt_cache_key"} {
-					if gjson.GetBytes(upstreamBody, path).Exists() {
+					if ojson.GetBytes(upstreamBody, path).Exists() {
 						t.Errorf("filtered field %s restored: %s", path, upstreamBody)
 					}
 				}

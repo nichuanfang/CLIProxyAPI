@@ -8,12 +8,12 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/MoeForge/moego/ojson"
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/config"
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/runtime/executor/helps"
 	cliproxyauth "github.com/router-for-me/CLIProxyAPI/v8/sdk/cliproxy/auth"
 	cliproxyexecutor "github.com/router-for-me/CLIProxyAPI/v8/sdk/cliproxy/executor"
 	sdktranslator "github.com/router-for-me/CLIProxyAPI/v8/sdk/translator"
-	"github.com/tidwall/gjson"
 )
 
 func TestCodeBuddyExecutorCompactionNonStream(t *testing.T) {
@@ -45,10 +45,10 @@ func TestCodeBuddyExecutorCompactionNonStream(t *testing.T) {
 		t.Fatalf("Execute() error = %v", err)
 	}
 
-	if got := gjson.GetBytes(gotBody, "stream").Bool(); !got {
+	if got := ojson.GetBytes(gotBody, "stream").Bool(); !got {
 		t.Fatalf("upstream must be stream=true: %s", string(gotBody))
 	}
-	msgs := gjson.GetBytes(gotBody, "messages")
+	msgs := ojson.GetBytes(gotBody, "messages")
 	if !msgs.IsArray() {
 		t.Fatalf("messages missing: %s", string(gotBody))
 	}
@@ -65,10 +65,10 @@ func TestCodeBuddyExecutorCompactionNonStream(t *testing.T) {
 		t.Fatalf("summary instruction missing: %s", string(gotBody))
 	}
 
-	if got := gjson.GetBytes(resp.Payload, "object").String(); got != "response.compaction" {
+	if got := ojson.GetBytes(resp.Payload, "object").String(); got != "response.compaction" {
 		t.Fatalf("object = %q, payload=%s", got, string(resp.Payload))
 	}
-	capsule := gjson.GetBytes(resp.Payload, "output.0.encrypted_content").String()
+	capsule := ojson.GetBytes(resp.Payload, "output.0.encrypted_content").String()
 	if capsule == "" {
 		t.Fatalf("capsule missing: %s", string(resp.Payload))
 	}
@@ -79,7 +79,7 @@ func TestCodeBuddyExecutorCompactionNonStream(t *testing.T) {
 	if !strings.Contains(summary, "weather tools") {
 		t.Fatalf("summary = %q", summary)
 	}
-	if got := gjson.GetBytes(resp.Payload, "usage.input_tokens").Int(); got != 100 {
+	if got := ojson.GetBytes(resp.Payload, "usage.input_tokens").Int(); got != 100 {
 		t.Fatalf("input_tokens = %d", got)
 	}
 }
@@ -191,10 +191,10 @@ func TestCodeBuddyExecutorCompactionToolChoiceNone(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Execute() error = %v", err)
 	}
-	if got := gjson.GetBytes(gotBody, "tool_choice").String(); got != "none" {
+	if got := ojson.GetBytes(gotBody, "tool_choice").String(); got != "none" {
 		t.Fatalf("tool_choice = %q, body=%s", got, string(gotBody))
 	}
-	if !gjson.GetBytes(gotBody, "tools").Exists() {
+	if !ojson.GetBytes(gotBody, "tools").Exists() {
 		t.Fatalf("tools must be preserved for structured history: %s", string(gotBody))
 	}
 }
