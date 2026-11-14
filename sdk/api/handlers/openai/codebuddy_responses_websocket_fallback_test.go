@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/MoeForge/moego/ojson"
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/websocket"
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/config"
@@ -21,7 +22,6 @@ import (
 	"github.com/router-for-me/CLIProxyAPI/v8/sdk/api/handlers"
 	coreauth "github.com/router-for-me/CLIProxyAPI/v8/sdk/cliproxy/auth"
 	sdkconfig "github.com/router-for-me/CLIProxyAPI/v8/sdk/config"
-	"github.com/tidwall/gjson"
 )
 
 const codebuddyFallbackModel = "glm5.3"
@@ -164,7 +164,7 @@ func readCodeBuddyWebsocketEvent(t *testing.T, conn *websocket.Conn, eventType s
 		if err != nil {
 			t.Fatalf("read websocket %s event: %v", eventType, err)
 		}
-		if got := gjson.GetBytes(payload, "type").String(); got == eventType {
+		if got := ojson.GetBytes(payload, "type").String(); got == eventType {
 			return bytes.Clone(payload)
 		}
 	}
@@ -194,13 +194,13 @@ func writeCodeBuddyWebsocket(t *testing.T, conn *websocket.Conn, payload string)
 
 func assertCodeBuddyChatMessages(t *testing.T, body []byte, wantContent ...string) {
 	t.Helper()
-	if got := gjson.GetBytes(body, "stream").Bool(); !got {
+	if got := ojson.GetBytes(body, "stream").Bool(); !got {
 		t.Fatalf("codebuddy request must force streaming: %s", body)
 	}
-	if gjson.GetBytes(body, "previous_response_id").Exists() {
+	if ojson.GetBytes(body, "previous_response_id").Exists() {
 		t.Fatalf("previous_response_id leaked to codebuddy chat request: %s", body)
 	}
-	messages := gjson.GetBytes(body, "messages").Array()
+	messages := ojson.GetBytes(body, "messages").Array()
 	if len(messages) != len(wantContent) {
 		t.Fatalf("chat message count = %d, want %d: %s", len(messages), len(wantContent), body)
 	}
@@ -221,7 +221,7 @@ func TestResponsesWebsocketCodeBuddyFallbackContinuesSession(t *testing.T) {
 
 	writeCodeBuddyWebsocket(t, conn, `{"type":"response.create","model":"`+codebuddyFallbackModel+`","input":[{"type":"message","id":"msg-1","role":"user","content":[{"type":"input_text","text":"first"}]}]}`)
 	first := readCodeBuddyWebsocketEvent(t, conn, wsEventTypeCompleted)
-	firstResponseID := gjson.GetBytes(first, "response.id").String()
+	firstResponseID := ojson.GetBytes(first, "response.id").String()
 	if firstResponseID == "" {
 		t.Fatalf("first completed response has no id: %s", first)
 	}
@@ -249,7 +249,7 @@ func TestResponsesWebsocketCodeBuddyFallbackToolCallContinuation(t *testing.T) {
 	firstRequest := `{"type":"response.create","model":"` + codebuddyFallbackModel + `","input":[{"type":"message","id":"msg-1","role":"user","content":[{"type":"input_text","text":"weather"}]}],"tools":[{"type":"function","name":"get_weather","description":"Get weather","parameters":{"type":"object","properties":{"city":{"type":"string"}},"required":["city"]}}]}`
 	writeCodeBuddyWebsocket(t, conn, firstRequest)
 	toolCompleted := readCodeBuddyWebsocketEvent(t, conn, wsEventTypeCompleted)
-	toolResponseID := gjson.GetBytes(toolCompleted, "response.id").String()
+	toolResponseID := ojson.GetBytes(toolCompleted, "response.id").String()
 	if toolResponseID == "" {
 		t.Fatalf("tool completed response has no id: %s", toolCompleted)
 	}
@@ -262,16 +262,16 @@ func TestResponsesWebsocketCodeBuddyFallbackToolCallContinuation(t *testing.T) {
 	if len(bodies) != 2 {
 		t.Fatalf("codebuddy request count = %d, want 2", len(bodies))
 	}
-	if got := gjson.GetBytes(bodies[0], "tools.0.function.name").String(); got != "get_weather" {
+	if got := ojson.GetBytes(bodies[0], "tools.0.function.name").String(); got != "get_weather" {
 		t.Fatalf("tool declaration = %q, want get_weather: %s", got, bodies[0])
 	}
-	if got := gjson.GetBytes(bodies[1], "messages.#(role==\"assistant\").tool_calls.0.function.name").String(); got != "get_weather" {
+	if got := ojson.GetBytes(bodies[1], "messages.#(role==\"assistant\").tool_calls.0.function.name").String(); got != "get_weather" {
 		t.Fatalf("assistant tool call missing from continuation request: %s", bodies[1])
 	}
-	if got := gjson.GetBytes(bodies[1], "messages.#(role==\"tool\").tool_call_id").String(); got != "call-1" {
+	if got := ojson.GetBytes(bodies[1], "messages.#(role==\"tool\").tool_call_id").String(); got != "call-1" {
 		t.Fatalf("tool result call id = %q, want call-1: %s", got, bodies[1])
 	}
-	if got := gjson.GetBytes(bodies[1], "messages.#(role==\"tool\").content").String(); got != "Sunny, 31C" {
+	if got := ojson.GetBytes(bodies[1], "messages.#(role==\"tool\").content").String(); got != "Sunny, 31C" {
 		t.Fatalf("tool result content = %q, want Sunny, 31C: %s", got, bodies[1])
 	}
 }
@@ -307,19 +307,13 @@ func TestResponsesWebsocketCodeBuddyFallbackExposesUpstreamErrors(t *testing.T) 
 			_, conn := newCodeBuddyFallbackWebsocket(t, fmt.Sprint(status))
 			writeCodeBuddyWebsocket(t, conn, `{"type":"response.create","model":"`+codebuddyFallbackModel+`","input":[{"type":"message","id":"msg-1","role":"user","content":[{"type":"input_text","text":"first"}]}]}`)
 			errorPayload, errRead := readCodeBuddyWebsocketEventOrClose(t, conn)
-			if status == http.StatusTooManyRequests {
-				if errRead == nil {
-					t.Fatalf("rate-limited credential unexpectedly produced frame: %s", errorPayload)
-				}
-				return
-			}
 			if errRead != nil {
 				t.Fatalf("read websocket error event for status %d: %v", status, errRead)
 			}
-			if got := int(gjson.GetBytes(errorPayload, "status").Int()); got != status {
+			if got := int(ojson.GetBytes(errorPayload, "status").Int()); got != status {
 				t.Fatalf("downstream status = %d, want %d: %s", got, status, errorPayload)
 			}
-			if got := gjson.GetBytes(errorPayload, "error.message").String(); got == "" {
+			if got := ojson.GetBytes(errorPayload, "error.message").String(); got == "" {
 				t.Fatalf("downstream error has no message: %s", errorPayload)
 			}
 		})
@@ -334,7 +328,7 @@ func TestResponsesWebsocketCodeBuddyFallbackTerminalIntegrity(t *testing.T) {
 			writeCodeBuddyWebsocket(t, conn, `{"type":"response.create","model":"`+codebuddyFallbackModel+`","input":[{"type":"message","role":"user","content":[{"type":"input_text","text":"first"}]}]}`)
 			if event == "finish-eof" {
 				completed := readCodeBuddyWebsocketEvent(t, conn, wsEventTypeCompleted)
-				responseID := gjson.GetBytes(completed, "response.id").String()
+				responseID := ojson.GetBytes(completed, "response.id").String()
 				writeCodeBuddyWebsocket(t, conn, fmt.Sprintf(`{"type":"response.create","previous_response_id":%q,"input":[{"type":"message","role":"user","content":[{"type":"input_text","text":"next"}]}]}`, responseID))
 				readCodeBuddyWebsocketEvent(t, conn, wsEventTypeCompleted)
 				bodies := upstream.bodies()
@@ -346,7 +340,7 @@ func TestResponsesWebsocketCodeBuddyFallbackTerminalIntegrity(t *testing.T) {
 			}
 			if event == "incomplete" {
 				payload := readCodeBuddyWebsocketEvent(t, conn, "response.incomplete")
-				if gjson.GetBytes(payload, "response.incomplete_details.reason").String() != "max_output_tokens" {
+				if ojson.GetBytes(payload, "response.incomplete_details.reason").String() != "max_output_tokens" {
 					t.Fatalf("missing incomplete reason: %s", payload)
 				}
 				return
@@ -358,7 +352,7 @@ func TestResponsesWebsocketCodeBuddyFallbackTerminalIntegrity(t *testing.T) {
 					terminal = true
 					break
 				}
-				switch gjson.GetBytes(payload, "type").String() {
+				switch ojson.GetBytes(payload, "type").String() {
 				case "response.completed":
 					t.Fatalf("unfinished turn completed: %s", payload)
 				case "error", "response.failed":
