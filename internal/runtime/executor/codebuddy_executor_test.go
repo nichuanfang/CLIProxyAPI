@@ -8,12 +8,12 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/MoeForge/moego/ojson"
 	codebuddyauth "github.com/router-for-me/CLIProxyAPI/v8/internal/auth/codebuddy"
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/config"
 	cliproxyauth "github.com/router-for-me/CLIProxyAPI/v8/sdk/cliproxy/auth"
 	cliproxyexecutor "github.com/router-for-me/CLIProxyAPI/v8/sdk/cliproxy/executor"
 	sdktranslator "github.com/router-for-me/CLIProxyAPI/v8/sdk/translator"
-	"github.com/tidwall/gjson"
 )
 
 func TestCodeBuddyExecutorExecute(t *testing.T) {
@@ -43,13 +43,13 @@ func TestCodeBuddyExecutorExecute(t *testing.T) {
 	if gotPath != codebuddyauth.ChatPath {
 		t.Fatalf("path = %s, want %s", gotPath, codebuddyauth.ChatPath)
 	}
-	if got := gjson.GetBytes(gotBody, "model").String(); got != "glm5.3" {
+	if got := ojson.GetBytes(gotBody, "model").String(); got != "glm5.3" {
 		t.Fatalf("upstream model = %s, body=%s", got, string(gotBody))
 	}
-	if got := gjson.GetBytes(gotBody, "messages.0.content").String(); got != "hi" {
+	if got := ojson.GetBytes(gotBody, "messages.0.content").String(); got != "hi" {
 		t.Fatalf("payload not translated: %s", string(gotBody))
 	}
-	if got := gjson.GetBytes(resp.Payload, "choices.0.message.content").String(); got != "hello" {
+	if got := ojson.GetBytes(resp.Payload, "choices.0.message.content").String(); got != "hello" {
 		t.Fatalf("response content = %s, payload=%s", got, string(resp.Payload))
 	}
 }
@@ -183,28 +183,28 @@ func TestCodeBuddyExecutorToolTranslation(t *testing.T) {
 		t.Fatalf("Execute() error = %v", err)
 	}
 
-	if got := gjson.GetBytes(gotBody, "tools.#").Int(); got != 1 {
+	if got := ojson.GetBytes(gotBody, "tools.#").Int(); got != 1 {
 		t.Fatalf("upstream tools = %d, body=%s", got, string(gotBody))
 	}
-	if got := gjson.GetBytes(gotBody, "tools.0.function.name").String(); got != "get_weather" {
+	if got := ojson.GetBytes(gotBody, "tools.0.function.name").String(); got != "get_weather" {
 		t.Fatalf("tool name = %q, body=%s", got, string(gotBody))
 	}
-	if got := gjson.GetBytes(gotBody, "messages.1.content.0.text").String(); got != "Weather in Beijing?" {
+	if got := ojson.GetBytes(gotBody, "messages.1.content.0.text").String(); got != "Weather in Beijing?" {
 		t.Fatalf("user content mismatch: %s", string(gotBody))
 	}
-	if got := gjson.GetBytes(resp.Payload, "content.#").Int(); got != 1 {
+	if got := ojson.GetBytes(resp.Payload, "content.#").Int(); got != 1 {
 		t.Fatalf("claude content blocks = %d, payload=%s", got, string(resp.Payload))
 	}
-	if got := gjson.GetBytes(resp.Payload, "content.0.type").String(); got != "tool_use" {
+	if got := ojson.GetBytes(resp.Payload, "content.0.type").String(); got != "tool_use" {
 		t.Fatalf("claude block type = %q, payload=%s", got, string(resp.Payload))
 	}
-	if got := gjson.GetBytes(resp.Payload, "content.0.name").String(); got != "get_weather" {
+	if got := ojson.GetBytes(resp.Payload, "content.0.name").String(); got != "get_weather" {
 		t.Fatalf("claude tool name = %q, payload=%s", got, string(resp.Payload))
 	}
-	if got := gjson.GetBytes(resp.Payload, "content.0.input.city").String(); got != "Beijing" {
-		t.Fatalf("claude tool input = %s, payload=%s", gjson.GetBytes(resp.Payload, "content.0.input").Raw, string(resp.Payload))
+	if got := ojson.GetBytes(resp.Payload, "content.0.input.city").String(); got != "Beijing" {
+		t.Fatalf("claude tool input = %s, payload=%s", ojson.GetBytes(resp.Payload, "content.0.input").Raw, string(resp.Payload))
 	}
-	if got := gjson.GetBytes(resp.Payload, "stop_reason").String(); got != "tool_use" {
+	if got := ojson.GetBytes(resp.Payload, "stop_reason").String(); got != "tool_use" {
 		t.Fatalf("stop_reason = %q, payload=%s", got, string(resp.Payload))
 	}
 }
@@ -233,28 +233,28 @@ func TestCodeBuddyExecutorToolResultTranslation(t *testing.T) {
 		t.Fatalf("Execute() error = %v", err)
 	}
 
-	if got := gjson.GetBytes(gotBody, "messages.#").Int(); got != 2 {
+	if got := ojson.GetBytes(gotBody, "messages.#").Int(); got != 2 {
 		t.Fatalf("message count = %d, body=%s", got, string(gotBody))
 	}
-	if got := gjson.GetBytes(gotBody, "messages.0.role").String(); got != "assistant" {
+	if got := ojson.GetBytes(gotBody, "messages.0.role").String(); got != "assistant" {
 		t.Fatalf("assistant role = %q, body=%s", got, string(gotBody))
 	}
-	if got := gjson.GetBytes(gotBody, "messages.0.tool_calls.0.id").String(); got != "call_1" {
+	if got := ojson.GetBytes(gotBody, "messages.0.tool_calls.0.id").String(); got != "call_1" {
 		t.Fatalf("assistant tool call id = %q, body=%s", got, string(gotBody))
 	}
-	if got := gjson.GetBytes(gotBody, "messages.0.tool_calls.0.function.name").String(); got != "get_weather" {
+	if got := ojson.GetBytes(gotBody, "messages.0.tool_calls.0.function.name").String(); got != "get_weather" {
 		t.Fatalf("assistant tool call name = %q, body=%s", got, string(gotBody))
 	}
-	if got := gjson.GetBytes(gotBody, "messages.0.tool_calls.0.function.arguments").String(); got != `{"city":"Beijing"}` {
+	if got := ojson.GetBytes(gotBody, "messages.0.tool_calls.0.function.arguments").String(); got != `{"city":"Beijing"}` {
 		t.Fatalf("assistant tool arguments = %q, body=%s", got, string(gotBody))
 	}
-	if got := gjson.GetBytes(gotBody, "messages.1.role").String(); got != "tool" {
+	if got := ojson.GetBytes(gotBody, "messages.1.role").String(); got != "tool" {
 		t.Fatalf("result role = %q, body=%s", got, string(gotBody))
 	}
-	if got := gjson.GetBytes(gotBody, "messages.1.tool_call_id").String(); got != "call_1" {
+	if got := ojson.GetBytes(gotBody, "messages.1.tool_call_id").String(); got != "call_1" {
 		t.Fatalf("result tool_call_id = %q, body=%s", got, string(gotBody))
 	}
-	if got := gjson.GetBytes(gotBody, "messages.1.content").String(); got != "Sunny, 31C" {
+	if got := ojson.GetBytes(gotBody, "messages.1.content").String(); got != "Sunny, 31C" {
 		t.Fatalf("result content = %q, body=%s", got, string(gotBody))
 	}
 }
