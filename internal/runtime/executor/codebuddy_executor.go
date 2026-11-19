@@ -114,6 +114,7 @@ func (e *CodeBuddyExecutor) Execute(ctx context.Context, auth *cliproxyauth.Auth
 	requestedModel := helps.PayloadRequestedModel(opts, req.Model)
 	requestPath := helps.PayloadRequestPath(opts)
 	translated = helps.StripCodeBuddyClaudeCodeIdentity(translated)
+	translated = helps.NormalizeCodeBuddyDeveloperRole(translated)
 	translated = helps.NormalizeOpenAIToolResultsTextOnly(translated)
 	translated = helps.NormalizeOpenAIMaxTokens(translated, false)
 	translated, err = e.applyPromptCacheKey(ctx, from, baseModel, req, opts, translated)
@@ -441,6 +442,7 @@ func (e *CodeBuddyExecutor) ExecuteStream(ctx context.Context, auth *cliproxyaut
 	requestedModel := helps.PayloadRequestedModel(opts, req.Model)
 	requestPath := helps.PayloadRequestPath(opts)
 	translated = helps.StripCodeBuddyClaudeCodeIdentity(translated)
+	translated = helps.NormalizeCodeBuddyDeveloperRole(translated)
 	translated = helps.NormalizeOpenAIToolResultsTextOnly(translated)
 	translated = helps.NormalizeOpenAIMaxTokens(translated, false)
 	translated, err = e.applyPromptCacheKey(ctx, from, baseModel, req, opts, translated)
@@ -692,6 +694,7 @@ func (e *CodeBuddyExecutor) CountTokens(ctx context.Context, auth *cliproxyauth.
 	}
 
 	translated = helps.StripCodeBuddyClaudeCodeIdentity(translated)
+	translated = helps.NormalizeCodeBuddyDeveloperRole(translated)
 	translated = helps.EnsureCodeBuddyReasoningEffort(translated, baseModel)
 	translated = helps.NewPayloadFinalizer(e.cfg, e.Identifier(), baseModel, to.String(), "", originalTranslated, req, opts)(translated)
 	enc, err := helps.TokenizerForModel(baseModel)
