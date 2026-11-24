@@ -404,7 +404,7 @@ func ConvertGeminiResponseToOpenAI(_ context.Context, _ string, originalRequestR
 
 							ensureToolCallsArray()
 
-							fcDoc := ojson.NewDocString(`{"id":"","index":0,"type":"function","function":{"name":"","arguments":""}}`)
+							fcDoc := ojson.NewDocString(`{"id":"","index":0,"type":"function","function":{"name":"","arguments":"{}"}}`)
 							fcName := util.RestoreSanitizedToolName(p.SanitizedNameMap, rawName)
 							fcID := strings.TrimSpace(functionCallResult.Get("id").String())
 							if fcID == "" {
@@ -428,8 +428,13 @@ func ConvertGeminiResponseToOpenAI(_ context.Context, _ string, originalRequestR
 							p.HasIncompleteToolCall[candidateIndex] = true
 							p.ActiveToolCall[candidateIndex] = nil
 						}
+						if partResult.Get("thought").Bool() {
+							sawNoopFunctionCall = true
+							continue
+						}
 						data := inlineDataResult.Get("data").String()
 						if data == "" {
+							sawNoopFunctionCall = true
 							continue
 						}
 						mimeType := inlineDataResult.Get("mimeType").String()
@@ -641,7 +646,7 @@ func ConvertGeminiResponseToOpenAINonStream(_ context.Context, _ string, origina
 					} else if functionCallResult.Exists() {
 						// Append function call content to the tool_calls array.
 						hasFunctionCall = true
-						fcItemDoc := ojson.NewDocString(`{"id":"","type":"function","function":{"name":"","arguments":""}}`)
+						fcItemDoc := ojson.NewDocString(`{"id":"","type":"function","function":{"name":"","arguments":"{}"}}`)
 						fcName := util.RestoreSanitizedToolName(sanitizedNameMap, functionCallResult.Get("name").String())
 						fcID := strings.TrimSpace(functionCallResult.Get("id").String())
 						if fcID == "" {
@@ -659,6 +664,9 @@ func ConvertGeminiResponseToOpenAINonStream(_ context.Context, _ string, origina
 						lastToolCall = fcItemDoc
 					} else if inlineDataResult.Exists() {
 						lastToolCall = nil
+						if partResult.Get("thought").Bool() {
+							continue
+						}
 						data := inlineDataResult.Get("data").String()
 						if data != "" {
 							mimeType := inlineDataResult.Get("mimeType").String()
