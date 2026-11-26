@@ -149,30 +149,37 @@ func TestRefreshTokenErrors(t *testing.T) {
 
 func TestApplyChatHeaders(t *testing.T) {
 	req, _ := http.NewRequest(http.MethodPost, "https://example.test", strings.NewReader("{}"))
-	ApplyChatHeaders(req, "token", true)
+	const conversationID = "f740af01-5560-4173-a7b6-7153a92854d5"
+	ApplyChatHeaders(req, "token", true, conversationID)
 
 	want := map[string]string{
 		"Authorization":     "Bearer token",
 		"X-Agent-Intent":    "craft",
 		"X-IDE-Type":        "CodeBuddyIDE",
-		"X-IDE-Version":     "4.9.7",
-		"X-Product-Version": "4.9.7",
+		"X-IDE-Version":     "4.12.2",
+		"X-Product-Version": "4.12.2",
 		"X-Env-ID":          "production",
 		"X-Domain":          "www.codebuddy.cn",
 		"X-Product":         "SaaS",
-		"User-Agent":        "CodeBuddyIDE/4.9.7 CodeBuddy/4.9.7",
+		"User-Agent":        "CodeBuddyIDE/4.12.2 CodeBuddy/4.12.2",
 		"Content-Type":      "application/json;charset=UTF-8",
 		"Accept":            "text/event-stream",
+		"X-Conversation-ID": conversationID,
 	}
 	for key, value := range want {
 		if got := req.Header.Get(key); got != value {
 			t.Fatalf("%s = %q, want %q", key, got, value)
 		}
 	}
-	for _, key := range []string{"X-Conversation-ID", "X-Conversation-Message-ID", "X-Conversation-Request-ID", "X-Request-ID"} {
-		if got := req.Header.Get(key); got != "" {
-			t.Fatalf("%s = %q, want no generated identity header", key, got)
-		}
+	messageID := req.Header.Get("X-Conversation-Message-ID")
+	if len(messageID) != 32 || strings.Contains(messageID, "-") {
+		t.Fatalf("X-Conversation-Message-ID = %q, want 32-char hyphenless hex", messageID)
+	}
+	if got := req.Header.Get("X-Conversation-Request-ID"); got != messageID {
+		t.Fatalf("X-Conversation-Request-ID = %q, want %q", got, messageID)
+	}
+	if got := req.Header.Get("X-Request-ID"); got != messageID {
+		t.Fatalf("X-Request-ID = %q, want %q", got, messageID)
 	}
 }
 

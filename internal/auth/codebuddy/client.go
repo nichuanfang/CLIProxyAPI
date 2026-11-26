@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/config"
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/util"
 	log "github.com/sirupsen/logrus"
@@ -30,7 +31,9 @@ const (
 	deviceAuthPendingCode     = 10008
 	deviceAuthLoginInProgress = 11217
 
-	defaultIDEVersion = "4.9.7"
+	// defaultIDEVersion is the CodeBuddy IDE build this proxy impersonates.
+	// 4.12.2 was rechecked against copilot.tencent.com on 2026-11-26 and completed normally.
+	defaultIDEVersion = "4.12.2"
 	defaultDomain     = "www.codebuddy.cn"
 )
 
@@ -300,7 +303,10 @@ func readBody(resp *http.Response) ([]byte, error) {
 }
 
 // ApplyChatHeaders sets the headers required by CodeBuddy IDE chat requests.
-func ApplyChatHeaders(req *http.Request, accessToken string, stream bool) {
+// conversationID is echoed as X-Conversation-ID. An empty value is replaced with
+// a new UUID so channel verification always sees a conversation identity.
+// Message and request ids are regenerated on every call, matching the official client.
+func ApplyChatHeaders(req *http.Request, accessToken string, stream bool, conversationID string) {
 	req.Header.Set("Authorization", "Bearer "+strings.TrimSpace(accessToken))
 	req.Header.Set("X-Agent-Intent", "craft")
 	req.Header.Set("X-IDE-Type", "CodeBuddyIDE")
@@ -313,9 +319,18 @@ func ApplyChatHeaders(req *http.Request, accessToken string, stream bool) {
 	req.Header.Set("Content-Type", "application/json;charset=UTF-8")
 	if stream {
 		req.Header.Set("Accept", "text/event-stream")
-		return
+	} else {
+		req.Header.Set("Accept", "application/json")
 	}
-	req.Header.Set("Accept", "application/json")
+	if id := strings.TrimSpace(conversationID); id != "" {
+		req.Header.Set("X-Conversation-ID", id)
+	} else {
+		req.Header.Set("X-Conversation-ID", uuid.NewString())
+	}
+	messageID := strings.ReplaceAll(uuid.NewString(), "-", "")
+	req.Header.Set("X-Conversation-Message-ID", messageID)
+	req.Header.Set("X-Request-ID", messageID)
+	req.Header.Set("X-Conversation-Request-ID", messageID)
 }
 
 type authEnvelope struct {

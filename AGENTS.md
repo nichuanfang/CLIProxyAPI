@@ -62,3 +62,15 @@ go build -o test-output ./cmd/server && rm test-output # Verify compile (REQUIRE
 - Avoid wall-clock `time.Sleep` in TTL, expiration, ordering, or cache-eviction unit tests due to platform timer granularity (e.g. Windows default timer resolution of ~15.6ms) and CI jitter under load; prefer controllable clocks (`nowFunc` / mock clock), explicit timestamp manipulation, or deterministic synchronization primitives.
 - Note: if modifying features that involve CLIProxyAPIHome, check if corresponding updates are needed in the CLIProxyAPIHome repository.
 - Endpoints under the `/v0/management` base URL are deprecated and no longer maintained. For any feature changes, do not modify endpoints under `/v0/management` unless necessary to fix compilation errors.
+
+## CodeBuddy channel verification
+
+The fork's CodeBuddy chat path (`internal/auth/codebuddy/client.go`, `internal/runtime/executor/codebuddy_executor.go`, `internal/runtime/executor/helps/codebuddy_roles.go`, `internal/runtime/executor/helps/codebuddy_identity.go`) fails closed on small identity mistakes. Do not "update" it without replaying a real upstream call.
+
+- Keep `defaultIDEVersion` at `4.12.2` for `X-IDE-Version`, `X-Product-Version`, and `User-Agent`. A 2026-11-03 bump to `4.12.2` was reverted the same day (`44888398`, `bcbd91ed`) after an upstream error, but a 2026-11-26 direct replay against `https://copilot.tencent.com/v2/chat/completions` returned HTTP 200 and `finish=stop` for both `4.9.7` and `4.12.2` when the conversation headers below were present. Do not change the version again without repeating that replay.
+- Every chat request must send the official conversation-header family. Without it, upstream returns HTTP 400 code `11128` (`Illegal API invocation from an unapproved channel` or `conversation id missing`). This still happens when the body has no `developer` role:
+  - `X-Conversation-ID`: stable for the session, and a bare UUID. Fold proxy prefixes such as `claude:`, `session:`, and `msg:` into a deterministic UUID. Never send those prefixes.
+  - `X-Conversation-Message-ID`, `X-Conversation-Request-ID`, and `X-Request-ID`: generate new values on every request.
+- Rewrite OpenAI `developer` messages to `system` before user payload rules. A `developer` role alone is enough for code `11128`, regardless of headers.
+- Strip the standalone Claude Code identity (`You are Claude Code, Anthropic's official CLI for Claude.`) and do not forward `x-anthropic-billing-header` blocks.
+- HTTP 403 code `11140` (`request illegal`) is account risk control. Headers and the IDE version do not clear it. Keep `request-scoped-errors.codebuddy` on `stop-and-cooldown` so a bad session is not retried across credentials.
