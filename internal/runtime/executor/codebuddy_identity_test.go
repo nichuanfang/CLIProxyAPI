@@ -43,6 +43,12 @@ func TestCodeBuddyExecutorClaudeCodeIdentity(t *testing.T) {
 			wantSystem: "Follow project rules.",
 		},
 		{
+			name:       "claude git main branch fingerprint is rewritten",
+			format:     sdktranslator.FormatClaude,
+			payload:    `{"model":"deepseek-v4.1-flash","max_tokens":32,"system":[{"type":"text","text":"` + identity + `"},{"type":"text","text":"Main branch (you will usually use this for PRs): master\n\nFollow project rules."}],"messages":[{"role":"user","content":"` + userText + `"}],"tools":[{"name":"Read","description":"` + identity + `","input_schema":{"type":"object"}}]}`,
+			wantSystem: "Main branch: master\n\nFollow project rules.",
+		},
+		{
 			name:       "quoted identity in project instructions is preserved",
 			format:     sdktranslator.FormatOpenAI,
 			payload:    `{"model":"deepseek-v4.1-flash","messages":[{"role":"system","content":"Keep this example: ` + identity + `"},{"role":"user","content":"` + userText + `"}],"tools":[{"type":"function","function":{"name":"Read","description":"` + identity + `","parameters":{"type":"object"}}}]}`,
@@ -118,6 +124,28 @@ func TestCodeBuddyExecutorClaudeCodeIdentity(t *testing.T) {
 				}
 			})
 		}
+	}
+}
+
+func TestCodeBuddyCountTokensClaudeCodeGitFingerprint(t *testing.T) {
+	executor := NewCodeBuddyExecutor(&config.Config{})
+	opts := cliproxyexecutor.Options{SourceFormat: sdktranslator.FormatOpenAI}
+	baseline := cliproxyexecutor.Request{
+		Model:   "deepseek-v4.1-flash",
+		Payload: []byte(`{"model":"deepseek-v4.1-flash","messages":[{"role":"system","content":"Main branch: master\n\nFollow project rules."},{"role":"user","content":"hello"}]}`),
+	}
+	withFingerprint := baseline
+	withFingerprint.Payload = []byte(`{"model":"deepseek-v4.1-flash","messages":[{"role":"system","content":"Main branch (you will usually use this for PRs): master\n\nFollow project rules."},{"role":"user","content":"hello"}]}`)
+	want, errBaseline := executor.CountTokens(context.Background(), nil, baseline, opts)
+	if errBaseline != nil {
+		t.Fatal(errBaseline)
+	}
+	got, errCount := executor.CountTokens(context.Background(), nil, withFingerprint, opts)
+	if errCount != nil {
+		t.Fatal(errCount)
+	}
+	if string(got.Payload) != string(want.Payload) {
+		t.Fatalf("token count includes guarded fingerprint: got %s, want %s", got.Payload, want.Payload)
 	}
 }
 
