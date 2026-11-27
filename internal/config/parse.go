@@ -129,6 +129,17 @@ func validateStartupConfig(data []byte, optional bool) (*startupConfig, error) {
 
 	cfg.KVStore.Path = strings.TrimSpace(cfg.KVStore.Path)
 
+	switch strings.ToLower(strings.TrimSpace(cfg.LogLevel)) {
+	case "":
+		// Preserve the legacy debug flag behavior when no explicit level is set.
+	case "warning":
+		cfg.LogLevel = "warn"
+	case "trace", "debug", "info", "warn", "error":
+		cfg.LogLevel = strings.ToLower(strings.TrimSpace(cfg.LogLevel))
+	default:
+		return nil, fmt.Errorf("invalid log level %q: expected trace, debug, info, warn, or error", cfg.LogLevel)
+	}
+
 	if cfg.LogsMaxTotalSizeMB < 0 {
 		cfg.LogsMaxTotalSizeMB = 0
 	}

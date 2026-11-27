@@ -1378,6 +1378,10 @@ observability:
     # Enable debug logging
     debug: false
 
+    # Minimum application log level: trace, debug, info, warn, or error.
+    # This takes precedence over the legacy debug flag when set.
+    level: info
+
     # When true, write application logs to rotating files instead of stdout
     logging-to-file: false
 

@@ -608,10 +608,10 @@ func run() (exitStatus int) {
 		return 1
 	}
 
-	log.Infof("CLIProxyAPI Version: %s, Commit: %s, BuiltAt: %s", buildinfo.Version, buildinfo.Commit, buildinfo.BuildDate)
-
-	// Set the log level based on the configuration.
+	// Set the configured log level before emitting startup messages.
 	util.SetLogLevel(cfg)
+
+	log.Infof("CLIProxyAPI Version: %s, Commit: %s, BuiltAt: %s", buildinfo.Version, buildinfo.Commit, buildinfo.BuildDate)
 
 	if resolvedAuthDir, errResolveAuthDir := util.ResolveAuthDir(cfg.AuthDir); errResolveAuthDir != nil {
 		logStartupErrorf("failed to resolve auth directory: %v", errResolveAuthDir)

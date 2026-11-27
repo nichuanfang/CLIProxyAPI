@@ -135,8 +135,8 @@ func (s *Server) UpdateClientsContext(ctx context.Context, cfg *config.Config) b
 		s.handlers.AuthManager.SetRetryConfig(cfg.RequestRetry, time.Duration(cfg.MaxRetryInterval)*time.Second, cfg.MaxRetryCredentials)
 	}
 
-	// Update log level dynamically when debug flag changes
-	if oldCfg == nil || oldCfg.Debug != cfg.Debug {
+	// Update log level dynamically when the explicit level or legacy debug flag changes.
+	if oldCfg == nil || oldCfg.Debug != cfg.Debug || oldCfg.LogLevel != cfg.LogLevel {
 		util.SetLogLevel(cfg)
 	}
 

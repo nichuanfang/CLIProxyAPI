@@ -1025,3 +1025,21 @@ func TestV8ExampleDocumentsSessionAffinityCompactionGuidance(t *testing.T) {
 		}
 	}
 }
+
+func TestV8ParsesLogLevelAndSizeLimit(t *testing.T) {
+	cfg, err := ParseConfigBytes([]byte(`config-version: 8
+observability:
+  logs:
+    level: warn
+    logs-max-total-size-mb: 500
+`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.LogLevel != "warn" {
+		t.Fatalf("log level = %q, want warn", cfg.LogLevel)
+	}
+	if cfg.LogsMaxTotalSizeMB != 500 {
+		t.Fatalf("logs max total size = %d, want 500", cfg.LogsMaxTotalSizeMB)
+	}
+}

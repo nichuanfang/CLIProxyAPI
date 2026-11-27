@@ -132,8 +132,8 @@ func (w *Watcher) reloadConfig() bool {
 	}
 
 	util.SetLogLevel(newConfig)
-	if oldConfig != nil && oldConfig.Debug != newConfig.Debug {
-		log.Debugf("log level updated - debug mode changed from %t to %t", oldConfig.Debug, newConfig.Debug)
+	if oldConfig != nil && (oldConfig.Debug != newConfig.Debug || oldConfig.LogLevel != newConfig.LogLevel) {
+		log.Debugf("log level updated - debug mode changed from %t to %t, level changed from %q to %q", oldConfig.Debug, newConfig.Debug, oldConfig.LogLevel, newConfig.LogLevel)
 	}
 
 	if oldConfig != nil {

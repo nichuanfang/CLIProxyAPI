@@ -70,6 +70,10 @@ type Config struct {
 	// Debug enables or disables debug-level logging and other debug features.
 	Debug bool `yaml:"debug" json:"debug"`
 
+	// LogLevel controls the minimum application log level. Supported values are
+	// trace, debug, info, warn, and error. When empty, Debug selects debug/info.
+	LogLevel string `yaml:"log-level" json:"log-level"`
+
 	// Pprof config controls the optional pprof HTTP debug server.
 	Pprof PprofConfig `yaml:"pprof" json:"pprof"`
 
