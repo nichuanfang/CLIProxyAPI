@@ -117,6 +117,15 @@ func GetCodeBuddyModels() []*ModelInfo {
 				Levels:      []string{"low", "medium", "high", "xhigh", "max", "none"},
 				ZeroAllowed: true,
 			}
+		case "glm-5.4":
+			// Verified against CodeBuddy's gateway on 2026-11-27; every
+			// advertised level plus medium/xhigh is accepted, including none.
+			model.ContextLength = 1000000
+			model.MaxCompletionTokens = 32768
+			model.Thinking = &ThinkingSupport{
+				Levels:      []string{"low", "medium", "high", "xhigh", "max", "none"},
+				ZeroAllowed: true,
+			}
 		case "glm-5.3":
 			model.ContextLength = 1000000
 			model.MaxCompletionTokens = 131072

@@ -471,6 +471,7 @@ func TestCodeBuddyModels(t *testing.T) {
 		"step-5-preview",
 		"space-bunny",
 		"deepseek-v4.1-flash",
+		"glm-5.4",
 		"glm-5.3",
 		"glm-5.3-flash",
 		"glm-5.3-flashx",
@@ -537,6 +538,7 @@ func TestCodeBuddyVerifiedCapabilities(t *testing.T) {
 		output     int
 	}{
 		{"deepseek-v4.1-flash", "low,medium,high,xhigh,max,none", 393216},
+		{"glm-5.4", "low,medium,high,xhigh,max,none", 32768},
 		{"glm-5.3", "low,medium,high,max,none", 131072},
 		{"glm-5.3-flash", "low,medium,high,xhigh,max,none", 131072},
 	} {

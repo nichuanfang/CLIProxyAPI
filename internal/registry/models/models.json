@@ -6799,6 +6799,36 @@
       }
     },
     {
+      "id": "glm-5.4",
+      "object": "model",
+      "created": 1780000000,
+      "owned_by": "codebuddy",
+      "type": "codebuddy",
+      "display_name": "GLM-5.4",
+      "name": "glm-5.4",
+      "description": "Native multimodal model, excelling at visual understanding and professional tasks.",
+      "context_length": 1000000,
+      "max_completion_tokens": 32768,
+      "supportedInputModalities": [
+        "text",
+        "image"
+      ],
+      "supportedOutputModalities": [
+        "text"
+      ],
+      "thinking": {
+        "levels": [
+          "low",
+          "medium",
+          "high",
+          "xhigh",
+          "max",
+          "none"
+        ],
+        "zero_allowed": true
+      }
+    },
+    {
       "id": "glm-5.3",
       "object": "model",
       "created": 1780000000,
